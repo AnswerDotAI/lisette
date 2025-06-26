@@ -1,0 +1,9 @@
+project:
+  output-dir: _docs
+
+website:
+  title: "lisette"
+  site-url: "https://AnswerDotAI.github.io/lisette"
+  description: "litellm helper"
+  repo-branch: main
+  repo-url: "https://github.com/AnswerDotAI/lisette"
