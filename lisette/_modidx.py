@@ -5,4 +5,12 @@ d = { 'settings': { 'branch': 'main',
                 'doc_host': 'https://AnswerDotAI.github.io',
                 'git_url': 'https://github.com/AnswerDotAI/lisette',
                 'lib_path': 'lisette'},
-  'syms': {'lisette.core': {'lisette.core.foo': ('core.html#foo', 'lisette/core.py')}}}
+  'syms': { 'lisette.core': { 'lisette.core.Chat': ('core.html#chat', 'lisette/core.py'),
+                              'lisette.core.Chat.__call__': ('core.html#chat.__call__', 'lisette/core.py'),
+                              'lisette.core.Chat.__init__': ('core.html#chat.__init__', 'lisette/core.py'),
+                              'lisette.core.Chat._call': ('core.html#chat._call', 'lisette/core.py'),
+                              'lisette.core.Chat._prepare_messages': ('core.html#chat._prepare_messages', 'lisette/core.py'),
+                              'lisette.core._lite_call_func': ('core.html#_lite_call_func', 'lisette/core.py'),
+                              'lisette.core.litellm.ModelResponse._repr_markdown_': ( 'core.html#litellm.modelresponse._repr_markdown_',
+                                                                                      'lisette/core.py'),
+                              'lisette.core.stream_with_complete': ('core.html#stream_with_complete', 'lisette/core.py')}}}
