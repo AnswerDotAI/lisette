@@ -68,7 +68,10 @@ class Chat:
         elif ns is None: ns = globals()
         
         # Cache tool schemas
-        self.tool_schemas = [{'type':'function', 'function':function_to_dict(t)} for t in tools] if tools else None
+        self.tool_schemas = []
+        for t in tools:
+            if isinstance(t, dict): self.tool_schemas.append(t)
+            elif t: self.tool_schemas += [{'type':'function', 'function':function_to_dict(t)}]
         self.h, self.sp, self.temp, self.tools, self.ns = hist, sp, temp, tools, ns
     
     def _prepare_messages(self, msg=None):
