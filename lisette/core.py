@@ -105,7 +105,12 @@ class Chat:
             
             # Check continuation function: user_msg, llm_response, tool_results
             user_msg = self.h[-2] if len(self.h) >= 2 else None
-            if not cont_func(user_msg, m, tool_results): return
+            if not cont_func(user_msg, m, tool_results):
+                # Send final prompt when cont_func stops the loop
+                if final_prompt:
+                    final_msg = tool_results + [{"role": "user", "content": final_prompt}]
+                    yield from self._call(final_msg, stream, max_tool_rounds, tool_round+1, cont_func, final_prompt, tool_choice='none', **kwargs)
+                return
                 
             # Continue with more rounds or final round
             if tool_round < max_tool_rounds - 1:
