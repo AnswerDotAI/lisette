@@ -74,6 +74,12 @@ class Chat:
             elif t: self.tool_schemas += [{'type':'function', 'function':function_to_dict(t)}]
         self.h, self.sp, self.temp, self.tools, self.ns = hist, sp, temp, tools, ns
     
+    def add_tool(self, func):
+        """Add a tool function to the chat client"""
+        self.tools.append(func)
+        self.tool_schemas.append({'type': 'function', 'function': function_to_dict(func)})
+        self.ns[func.__name__] = func
+
     def _prepare_messages(self, msg=None):
         "Prepare the messages list for the API call"
         messages = [{"role": "system", "content": self.sp}] if self.sp else []
