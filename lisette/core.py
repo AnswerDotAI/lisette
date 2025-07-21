@@ -8,33 +8,28 @@ __all__ = ['stream_with_complete', 'Chat']
 # %% ../nbs/00_core.ipynb 2
 import litellm, json
 from litellm import completion, stream_chunk_builder
+from litellm.types.utils import ModelResponseStream,ModelResponse
 from litellm.utils import function_to_dict
 from toolslm.funccall import mk_ns, call_func
 from typing import Optional
 from fastcore.all import *
 
-# %% ../nbs/00_core.ipynb 8
+# %% ../nbs/00_core.ipynb 7
 @patch
 def _repr_markdown_(self: litellm.ModelResponse):
-    # Extract content from the response
     message = self.choices[0].message
-    if message.content:
-        content = message.content
-    elif message.tool_calls:
-        # Show tool calls in a nice format
-        tool_calls = [f"🔧 {tc.function.name}({tc.function.arguments})\n" for tc in message.tool_calls]
-        content = "\n".join(tool_calls)
-    else:
-        content = str(message)
-    
-    # Create details section
-    details = []
-    details.append(f"id: `{self.id}`")
-    details.append(f"model: `{self.model}`")
-    details.append(f"finish_reason: `{self.choices[0].finish_reason}`")
-    if hasattr(self, 'usage') and self.usage:
-        details.append(f"usage: `{self.usage}`")
-    
+    content = ''
+    if message.content: content += message.content
+    if message.tool_calls:
+        tool_calls = [f"\n\n🔧 {tc.function.name}({tc.function.arguments})\n" for tc in message.tool_calls]
+        content += "\n".join(tool_calls)
+    if not content: content = str(message)
+    details = [
+        f"id: `{self.id}`",
+        f"model: `{self.model}`",
+        f"finish_reason: `{self.choices[0].finish_reason}`"
+    ]
+    if hasattr(self, 'usage') and self.usage: details.append(f"usage: `{self.usage}`")
     det_str = '\n- '.join(details)
     
     return f"""{content}
@@ -45,7 +40,7 @@ def _repr_markdown_(self: litellm.ModelResponse):
 
 </details>"""
 
-# %% ../nbs/00_core.ipynb 12
+# %% ../nbs/00_core.ipynb 11
 def stream_with_complete(gen):
     "Extend streaming response chunks with the complete response"
     chunks = []
@@ -54,89 +49,59 @@ def stream_with_complete(gen):
         yield chunk
     return stream_chunk_builder(chunks)
 
-# %% ../nbs/00_core.ipynb 13
-class Chat:
-    def __init__(self, model: str, sp='', temp=0, tools: list = None, 
-                 hist: list = None, ns: Optional[dict] = None):
-        "LiteLLM chat client."
-        self.model = model
-        if hist is None: hist = []
-        if tools is None: tools = []
-        
-        # Set up namespace following claudette pattern
-        if ns is None and tools: ns = mk_ns(tools)
-        elif ns is None: ns = globals()
-        
-        # Cache tool schemas
-        self.tool_schemas = []
-        for t in tools:
-            if isinstance(t, dict): self.tool_schemas.append(t)
-            elif t: self.tool_schemas += [{'type':'function', 'function':function_to_dict(t)}]
-        self.h, self.sp, self.temp, self.tools, self.ns = hist, sp, temp, tools, ns
-    
-    def add_tool(self, func):
-        """Add a tool function to the chat client"""
-        self.tools.append(func)
-        self.tool_schemas.append({'type': 'function', 'function': function_to_dict(func)})
-        self.ns[func.__name__] = func
+# %% ../nbs/00_core.ipynb 19
+def _lite_mk_func(f):
+    if isinstance(f, dict): return f
+    return {'type':'function', 'function':get_schema(f, pname='parameters')}
 
-    def _prepare_messages(self, msg=None):
-        "Prepare the messages list for the API call"
-        messages = [{"role": "system", "content": self.sp}] if self.sp else []
-        
-        if isinstance(msg, str): self.h.append({"role": "user", "content": msg})
-        elif isinstance(msg, dict): self.h.append(msg)
-        elif isinstance(msg, list): self.h.extend(msg)
-        elif msg is None: pass
-        else: raise ValueError(f"Can't parse {msg=}")
-            
-        for m in self.h: messages.append(m if isinstance(m, dict) else m.model_dump())
-        return messages
-    
-    def _call(self, msg=None, stream=False, max_tool_rounds=1, tool_round=0, 
-              cont_func=noop, final_prompt=None, **kwargs):
-        "Internal call method that always yields responses"
-        messages = self._prepare_messages(msg)
-        
-        # Make the API call
-        res = litellm.completion(model=self.model, messages=messages, stream=stream, 
-                               tools=self.tool_schemas, temperature=self.temp, **kwargs)
-        
-        if stream: res = yield from stream_with_complete(res)        
-
-        m = res.choices[0].message
-        self.h.append(m)
-        yield res
-
-        
-        if tcs := m.tool_calls:
-            tool_results = [_lite_call_func(tc, ns=self.ns) for tc in tcs]
-            
-            # Check continuation function: user_msg, llm_response, tool_results
-            user_msg = self.h[-2] if len(self.h) >= 2 else None
-            if not cont_func(user_msg, m, tool_results):
-                # Send final prompt when cont_func stops the loop
-                if final_prompt:
-                    final_msg = tool_results + [{"role": "user", "content": final_prompt}]
-                    yield from self._call(final_msg, stream, max_tool_rounds, tool_round+1, cont_func, final_prompt, tool_choice='none', **kwargs)
-                return
-                
-            # Continue with more rounds or final round
-            if tool_round < max_tool_rounds - 1:
-                yield from self._call(tool_results, stream, max_tool_rounds, tool_round+1, cont_func, final_prompt, **kwargs)
-            else:
-                # Final round - inject final_prompt if provided and set tool_choice=None
-                final_msg = tool_results + ([{"role": "user", "content": final_prompt}] if final_prompt else [])
-                yield from self._call(final_msg, stream, max_tool_rounds, tool_round+1, cont_func, final_prompt, tool_choice='none', **kwargs)
-    
-    def __call__(self, msg=None, stream=False, max_tool_rounds=1, cont_func=noop, final_prompt=None, return_all=False, **kwargs):
-        "Main call method - handles streaming vs non-streaming"
-        result_gen = self._call(msg, stream, max_tool_rounds, 0, cont_func, final_prompt, **kwargs)        
-        if stream: return result_gen              # streaming
-        elif return_all: return list(result_gen)  # toolloop behavior
-        else: return last(result_gen)             # normal chat behavior
-
-# %% ../nbs/00_core.ipynb 22
+# %% ../nbs/00_core.ipynb 25
 def _lite_call_func(tc,ns,raise_on_err=True):
     res = call_func(tc.function.name, json.loads(tc.function.arguments),ns=ns)
     return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": str(res)}
+
+# %% ../nbs/00_core.ipynb 37
+class Chat:
+    def __init__(self, model:str, sp='', temp=0, tools:list=None, hist:list=None, ns:Optional[dict]=None):
+        "LiteLLM chat client."
+        self.model = model
+        hist,tools = listify(hist),listify(tools)
+        if ns is None and tools: ns = mk_ns(tools)
+        elif ns is None: ns = globals()
+        self.tool_schemas = [_lite_mk_func(t) for t in tools] if tools else None
+        store_attr()
+    
+    def _prepare_msgs(self, msg=None):
+        "Prepare the messages list for the API call"
+        msgs = [{"role": "system", "content": self.sp}] if self.sp else []
+        self.hist += [{"role": "user", "content": msg}] if isinstance(msg, str) \
+            else [msg] if isinstance(msg, dict) \
+            else [] if msg is None \
+            else msg
+        return msgs + [m if isinstance(m, dict) else m.model_dump() for m in self.hist]
+
+    def _call(self, msg=None, stream=False, max_tool_rounds=1, tool_round=0, final_prompt=None, tool_choice=None, **kwargs):
+        "Internal method that always yields responses"
+        msgs = self._prepare_msgs(msg)
+        res = completion(model=self.model, messages=msgs, stream=stream, 
+                         tools=self.tool_schemas, temperature=self.temp, **kwargs)
+        if stream: res = yield from stream_with_complete(res)        
+        m = res.choices[0].message
+        self.hist.append(m)
+        yield res
+
+        if tcs := m.tool_calls:
+            tool_results = [_lite_call_func(tc, ns=self.ns) for tc in tcs]
+            if tool_round>=max_tool_rounds-1:
+                tool_results += ([{"role": "user", "content": final_prompt}] if final_prompt else [])
+                tool_choice='none'
+            yield from self._call(
+                tool_results, stream, max_tool_rounds, tool_round+1,
+                final_prompt, tool_choice=tool_choice, **kwargs)
+    
+    def __call__(self, msg=None, stream=False, max_tool_rounds=1,
+                 final_prompt=None, return_all=False, **kwargs):
+        "Main call method - handles streaming vs non-streaming"
+        result_gen = self._call(msg, stream, max_tool_rounds, 0, final_prompt, **kwargs)     
+        if stream: return result_gen              # streaming
+        elif return_all: return list(result_gen)  # toolloop behavior
+        else: return last(result_gen)             # normal chat behavior
