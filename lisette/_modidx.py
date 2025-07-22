@@ -12,6 +12,8 @@ d = { 'settings': { 'branch': 'main',
                               'lisette.core.Chat._prepare_msgs': ('core.html#chat._prepare_msgs', 'lisette/core.py'),
                               'lisette.core._lite_call_func': ('core.html#_lite_call_func', 'lisette/core.py'),
                               'lisette.core._lite_mk_func': ('core.html#_lite_mk_func', 'lisette/core.py'),
+                              'lisette.core.cite_footnotes': ('core.html#cite_footnotes', 'lisette/core.py'),
                               'lisette.core.litellm.ModelResponse._repr_markdown_': ( 'core.html#litellm.modelresponse._repr_markdown_',
                                                                                       'lisette/core.py'),
+                              'lisette.core.mk_user': ('core.html#mk_user', 'lisette/core.py'),
                               'lisette.core.stream_with_complete': ('core.html#stream_with_complete', 'lisette/core.py')}}}
