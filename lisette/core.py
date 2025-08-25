@@ -15,7 +15,7 @@ from toolslm.funccall import get_schema
 from typing import Optional
 from fastcore.all import *
 
-# %% ../nbs/00_core.ipynb 7
+# %% ../nbs/00_core.ipynb 10
 @patch
 def _repr_markdown_(self: litellm.ModelResponse):
     message = self.choices[0].message
@@ -41,7 +41,7 @@ def _repr_markdown_(self: litellm.ModelResponse):
 
 </details>"""
 
-# %% ../nbs/00_core.ipynb 11
+# %% ../nbs/00_core.ipynb 14
 def stream_with_complete(gen, postproc=noop):
     "Extend streaming response chunks with the complete response"
     chunks = []
@@ -51,7 +51,7 @@ def stream_with_complete(gen, postproc=noop):
     postproc(chunks)
     return stream_chunk_builder(chunks)
 
-# %% ../nbs/00_core.ipynb 18
+# %% ../nbs/00_core.ipynb 21
 # TODO: OpenAI tool calls break when title is None. This is quick & dirty workaround.
 def _tmp_get_schema(f, pname='parameters'):
     s = get_schema(f, pname='parameters')
@@ -59,23 +59,23 @@ def _tmp_get_schema(f, pname='parameters'):
     s.get('parameters', {})['title'] = title or ''
     return s
 
-# %% ../nbs/00_core.ipynb 19
+# %% ../nbs/00_core.ipynb 22
 def _lite_mk_func(f):
     if isinstance(f, dict): return f
     return {'type':'function', 'function':_tmp_get_schema(f, pname='parameters')}
 
-# %% ../nbs/00_core.ipynb 22
+# %% ../nbs/00_core.ipynb 25
 def mk_user(s, cache=False):
     res = {"role": "user", "content": s}
     if cache: res['cache_control'] = {'type': 'ephemeral'}
     return res
 
-# %% ../nbs/00_core.ipynb 25
+# %% ../nbs/00_core.ipynb 28
 def _lite_call_func(tc,ns,raise_on_err=True):
     res = call_func(tc.function.name, json.loads(tc.function.arguments),ns=ns)
     return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": str(res)}
 
-# %% ../nbs/00_core.ipynb 36
+# %% ../nbs/00_core.ipynb 39
 def cite_footnotes(stream_list):
     "Add markdown footnote citations to stream deltas"
     for msg in stream_list:
@@ -86,7 +86,7 @@ def cite_footnotes(stream_list):
             title = citation['title'].replace('"', '\\"')
             delta.content = f'[*]({citation["url"]} "{title}") '
 
-# %% ../nbs/00_core.ipynb 40
+# %% ../nbs/00_core.ipynb 43
 class Chat:
     def __init__(self, model:str, sp='', temp=0, tools:list=None, hist:list=None, ns:Optional[dict]=None, cache=False):
         "LiteLLM chat client."
