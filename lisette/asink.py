@@ -7,7 +7,7 @@ __all__ = ['astream_result', 'AsyncChat']
 
 # %% ../nbs/01_async.ipynb 2
 import json,asyncio
-from litellm import acompletion, ModelResponse, stream_chunk_builder
+from litellm import acompletion, ModelResponse, ModelResponseStream, stream_chunk_builder
 from toolslm.funccall import call_func_async
 from fastcore.utils import *
 from .core import *
@@ -29,33 +29,41 @@ async def astream_result(self, agen, postproc=noop):
 
 # %% ../nbs/01_async.ipynb 7
 class AsyncChat(Chat):
-    async def _call(self, msg=None, stream=False, max_tool_rounds=1, tool_round=0, final_prompt=None, tool_choice=None, **kwargs):
+    async def _call(self, msg=None, prefill=None, temp=None, think=None, stream=False, max_tool_rounds=1, tool_round=0, final_prompt=None, tool_choice=None, **kwargs):
         "Internal method that always yields responses"
-        msgs = self._prepare_msgs(msg)
+        msgs = self._prepare_msgs(msg, prefill)
         res = await acompletion(model=self.model, messages=msgs, stream=stream,
-                         tools=self.tool_schemas, temperature=self.temp, **kwargs)
+                         tools=self.tool_schemas, reasoning_effort=effort.get(think), 
+                         # temperature is not supported when reasoning
+                         temperature=None if think else (temp if temp is not None else self.temp), 
+                         **kwargs)
         if stream:
             res = astream_result(res, postproc=cite_footnotes)
             async for chunk in res: yield chunk
             res = res.value
         
         yield res
-        m = res.choices[0].message
-        self.hist.append(m)
+        self.hist.append(m:=res.choices[0].message)
 
         if tcs := m.tool_calls:
-            tool_results = [await _alite_call_func(tc, ns=self.ns) for tc in tcs]
+            tool_results = []
+            for tc in tcs:
+                result = await _alite_call_func(tc, ns=self.ns)
+                tool_results.append(result)
+                yield result
+            
             if tool_round>=max_tool_rounds-1:
                 tool_results += ([{"role": "user", "content": final_prompt}] if final_prompt else [])
                 tool_choice='none'
+            
             async for result in self._call(
                 tool_results, stream, max_tool_rounds, tool_round+1,
                 final_prompt, tool_choice=tool_choice, **kwargs):
                     yield result
     
-    async def __call__(self, msg=None, stream=False, max_tool_rounds=1, final_prompt=None, return_all=False, **kwargs):
+    async def __call__(self, msg=None, prefill=None, temp=None, think=None, stream=False, max_tool_rounds=1, final_prompt=None, return_all=False, **kwargs):
         "Main call method - handles streaming vs non-streaming"
-        if stream: return self._call(msg, stream, max_tool_rounds, 0, final_prompt, **kwargs)
-        result_gen = self._call(msg, stream, max_tool_rounds, 0, final_prompt, **kwargs)
-        if return_all: return [result async for result in result_gen] # toolloop behavior
-        else: return [result async for result in result_gen][-1]      # normal chat behavior
+        result_gen = self._call(msg, prefill, temp, think, stream, max_tool_rounds, 0, final_prompt, **kwargs)
+        if stream or return_all: return result_gen
+        async for res in result_gen: pass
+        return res # normal chat behavior only return last msg
