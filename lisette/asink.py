@@ -41,6 +41,7 @@ class AsyncChat(Chat):
             res = astream_result(res, postproc=cite_footnotes)
             async for chunk in res: yield chunk
             res = res.value
+        else: add_citations_to_content(res)
         
         yield res
         self.hist.append(m:=res.choices[0].message)
