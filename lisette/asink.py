@@ -58,7 +58,8 @@ class AsyncChat(Chat):
                 tool_choice='none'
             
             async for result in self._call(
-                tool_results, stream, max_tool_rounds, tool_round+1,
+                # TODO: dont think after tool response?
+                tool_results, prefill, temp, None, stream, max_tool_rounds, tool_round+1,
                 final_prompt, tool_choice=tool_choice, **kwargs):
                     yield result
     
