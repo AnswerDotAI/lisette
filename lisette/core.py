@@ -115,6 +115,7 @@ class Chat:
 
         if tcs := m.tool_calls:
             tool_results = [_lite_call_func(tc, ns=self.ns) for tc in tcs]
+            for r in tool_results: yield r
             if tool_round>=max_tool_rounds-1:
                 tool_results += ([{"role": "user", "content": final_prompt}] if final_prompt else [])
                 tool_choice='none'
