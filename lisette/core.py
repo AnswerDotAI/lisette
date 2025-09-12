@@ -4,17 +4,16 @@
 
 # %% auto 0
 __all__ = ['effort', 'stream_with_complete', 'mk_user', 'delta_text', 'format_citations', 'add_citations_to_content',
-           'cite_footnotes', 'Chat']
+           'cite_footnotes', 'Chat', 'amd_display', 'md_display', 'astream_result', 'AsyncChat']
 
 # %% ../nbs/00_core.ipynb 2
-import litellm, json
-from litellm import completion, stream_chunk_builder, get_model_info
-from litellm.types.utils import ModelResponseStream,ModelResponse
-from litellm.utils import function_to_dict
-from toolslm.funccall import mk_ns, call_func
-from toolslm.funccall import get_schema
+import litellm, json, asyncio
+from html import escape
 from typing import Optional
-from fastcore.all import *
+from litellm import acompletion, completion, stream_chunk_builder, get_model_info, ModelResponse, ModelResponseStream
+from litellm.utils import function_to_dict
+from toolslm.funccall import mk_ns, call_func, call_func_async, get_schema
+from fastcore.utils import *
 
 # %% ../nbs/00_core.ipynb 7
 @patch
@@ -82,34 +81,32 @@ def delta_text(msg):
     if hasattr(delta,'reasoning_content'): return '🧠' if delta.reasoning_content else '\n\n'
     return None
 
-# %% ../nbs/00_core.ipynb 36
+# %% ../nbs/00_core.ipynb 35
 def format_citations(cs):
     sources = {f"- [{c['title']}]({c['url']})\n" for gs in cs for c in gs}
     return '**Citations:**\n' + ''.join(sorted(sources))
 
-# %% ../nbs/00_core.ipynb 38
+# %% ../nbs/00_core.ipynb 37
 def add_citations_to_content(r):
     "Update LiteLLM ModelResponse content by appending formatted citations if they exist"
     if cs:=nested_idx(r.choices[0].message, 'provider_specific_fields', 'citations'):
         r.choices[0].message.content += '\n\n'+format_citations(cs)
 
-# %% ../nbs/00_core.ipynb 41
+# %% ../nbs/00_core.ipynb 40
 def cite_footnotes(stream_list):
     "Add markdown footnote citations to stream deltas"
     for msg in stream_list:
-        delta = nested_idx(msg, 'choices', 0, 'delta')
-        if not delta: continue
-        citation = nested_idx(delta, 'provider_specific_fields', 'citation')
-        if citation:
+        if not (delta:=nested_idx(msg, 'choices', 0, 'delta')): continue
+        if citation:=nested_idx(delta, 'provider_specific_fields', 'citation'):
             title = citation['title'].replace('"', '\\"')
             delta.content = f'[*]({citation["url"]} "{title}") '
 
-# %% ../nbs/00_core.ipynb 45
+# %% ../nbs/00_core.ipynb 44
 # TODO: dont like this var name...
 # TODO: make enum so type hints are nice
 effort = AttrDict({o[0]:o for o in ('low','medium','high')})
 
-# %% ../nbs/00_core.ipynb 46
+# %% ../nbs/00_core.ipynb 45
 class Chat:
     def __init__(self, model:str, sp='', temp=0, tools:list=None, hist:list=None, ns:Optional[dict]=None, cache=False):
         "LiteLLM chat client."
@@ -138,7 +135,7 @@ class Chat:
                          tools=self.tool_schemas, reasoning_effort = effort.get(think),
                          # temperature is not supported when reasoning
                          temperature=None if think else (temp if temp is not None else self.temp), **kwargs)
-        if stream: res = yield from stream_with_complete(res, postproc=cite_footnotes)
+        if stream: res = yield from stream_with_complete(res)
         else: add_citations_to_content(res)
         m = res.choices[0].message
         self.hist.append(m)
@@ -150,7 +147,7 @@ class Chat:
                 tool_results += ([{"role": "user", "content": final_prompt}] if final_prompt else [])
                 tool_choice='none'
             yield from self._call(
-                tool_results, stream, max_tool_rounds, tool_round+1,
+                tool_results, prefill, temp, None, stream, max_tool_rounds, tool_round+1,
                 final_prompt, tool_choice=tool_choice, **kwargs)
     
     def __call__(self, msg=None, prefill=None, temp=None, think=None, stream=False, max_tool_rounds=1,
@@ -160,3 +157,85 @@ class Chat:
         if stream: return result_gen              # streaming
         elif return_all: return list(result_gen)  # toolloop behavior
         else: return last(result_gen)             # normal chat behavior
+
+# %% ../nbs/00_core.ipynb 67
+def _clean_str(text):
+    "Clean content to prevent formatted content from breaking the tool result formatting."
+    return escape(str(text)).replace('`', '').replace('\n', ' ').replace('|', ' ')
+
+# %% ../nbs/00_core.ipynb 68
+def _trunc_str(s, mx=2000, replace="…"):
+    "Truncate `s` to `mx` chars max, adding `replace` if truncated"
+    s = str(s).strip()
+    return s[:mx]+replace if len(s)>mx else s
+
+# %% ../nbs/00_core.ipynb 76
+async def amd_display(chunks):    
+    md = ''
+    async for chunk in chunks: 
+        md+=chunk
+        display(Markdown(md),clear=True)
+
+# %% ../nbs/00_core.ipynb 77
+async def md_display(chunks):    
+    md = ''
+    for chunk in chunks: 
+        md+=chunk
+        display(Markdown(md),clear=True)
+
+# %% ../nbs/00_core.ipynb 79
+async def _alite_call_func(tc, ns, raise_on_err=True):
+    res = await call_func_async(tc.function.name, json.loads(tc.function.arguments), ns=ns)
+    return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": str(res)}
+
+# %% ../nbs/00_core.ipynb 81
+@asave_iter
+async def astream_result(self, agen, postproc=noop):
+    chunks = []
+    async for chunk in agen:
+        chunks.append(chunk)
+        yield chunk
+    postproc(chunks)
+    self.value = stream_chunk_builder(chunks)
+
+# %% ../nbs/00_core.ipynb 82
+class AsyncChat(Chat):
+    async def _call(self, msg=None, prefill=None, temp=None, think=None, stream=False, max_tool_rounds=1, tool_round=0, final_prompt=None, tool_choice=None, **kwargs):
+        "Internal method that always yields responses"
+        msgs = self._prepare_msgs(msg, prefill)
+        res = await acompletion(model=self.model, messages=msgs, stream=stream,
+                         tools=self.tool_schemas, reasoning_effort=effort.get(think), 
+                         # temperature is not supported when reasoning
+                         temperature=None if think else (temp if temp is not None else self.temp), 
+                         **kwargs)
+        if stream:
+            res = astream_result(res)
+            async for chunk in res: yield chunk
+            res = res.value
+        else: add_citations_to_content(res)
+        
+        yield res
+        self.hist.append(m:=res.choices[0].message)
+
+        if tcs := m.tool_calls:
+            tool_results = []
+            for tc in tcs:
+                result = await _alite_call_func(tc, ns=self.ns)
+                tool_results.append(result)
+                yield result
+            
+            if tool_round>=max_tool_rounds-1:
+                tool_results += ([{"role": "user", "content": final_prompt}] if final_prompt else [])
+                tool_choice='none'
+            
+            async for result in self._call(
+                tool_results, prefill, temp, None, stream, max_tool_rounds, tool_round+1,
+                final_prompt, tool_choice=tool_choice, **kwargs):
+                    yield result
+    
+    async def __call__(self, msg=None, prefill=None, temp=None, think=None, stream=False, max_tool_rounds=1, final_prompt=None, return_all=False, **kwargs):
+        "Main call method - handles streaming vs non-streaming"
+        result_gen = self._call(msg, prefill, temp, think, stream, max_tool_rounds, 0, final_prompt, **kwargs)
+        if stream or return_all: return result_gen
+        async for res in result_gen: pass
+        return res # normal chat behavior only return last msg
