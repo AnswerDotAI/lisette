@@ -13,7 +13,7 @@ from litellm.utils import function_to_dict
 from toolslm.funccall import mk_ns, call_func, call_func_async, get_schema
 from fastcore.utils import *
 
-# %% ../nbs/00_core.ipynb 8
+# %% ../nbs/00_core.ipynb 10
 @patch
 def _repr_markdown_(self: litellm.ModelResponse):
     message = self.choices[0].message
@@ -39,7 +39,7 @@ def _repr_markdown_(self: litellm.ModelResponse):
 
 </details>"""
 
-# %% ../nbs/00_core.ipynb 12
+# %% ../nbs/00_core.ipynb 14
 def stream_with_complete(gen, postproc=noop):
     "Extend streaming response chunks with the complete response"
     chunks = []
@@ -49,23 +49,23 @@ def stream_with_complete(gen, postproc=noop):
     postproc(chunks)
     return stream_chunk_builder(chunks)
 
-# %% ../nbs/00_core.ipynb 19
+# %% ../nbs/00_core.ipynb 21
 def _lite_mk_func(f):
     if isinstance(f, dict): return f
     return {'type':'function', 'function':get_schema(f, pname='parameters')}
 
-# %% ../nbs/00_core.ipynb 22
+# %% ../nbs/00_core.ipynb 24
 def mk_user(s, cache=False):
     res = {"role": "user", "content": s}
     if cache: res['cache_control'] = {'type': 'ephemeral'}
     return res
 
-# %% ../nbs/00_core.ipynb 25
+# %% ../nbs/00_core.ipynb 27
 def _lite_call_func(tc,ns,raise_on_err=True):
     res = call_func(tc.function.name, json.loads(tc.function.arguments),ns=ns)
     return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": str(res)}
 
-# %% ../nbs/00_core.ipynb 36
+# %% ../nbs/00_core.ipynb 38
 def cite_footnote(msg):
     if not (delta:=nested_idx(msg, 'choices', 0, 'delta')): return
     if citation:= nested_idx(delta, 'provider_specific_fields', 'citation'):
@@ -76,10 +76,10 @@ def cite_footnotes(stream_list):
     "Add markdown footnote citations to stream deltas"
     for msg in stream_list: cite_footnote(msg)
 
-# %% ../nbs/00_core.ipynb 40
+# %% ../nbs/00_core.ipynb 42
 effort = AttrDict({o[0]:o for o in ('low','medium','high')})
 
-# %% ../nbs/00_core.ipynb 41
+# %% ../nbs/00_core.ipynb 43
 class Chat:
     def __init__(self, model:str, sp='', temp=0, tools:list=None, hist:list=None, ns:Optional[dict]=None, cache=False):
         "LiteLLM chat client."
@@ -131,12 +131,12 @@ class Chat:
         elif return_all: return list(result_gen)  # toolloop behavior
         else: return last(result_gen)             # normal chat behavior
 
-# %% ../nbs/00_core.ipynb 61
+# %% ../nbs/00_core.ipynb 63
 async def _alite_call_func(tc, ns, raise_on_err=True):
     res = await call_func_async(tc.function.name, json.loads(tc.function.arguments), ns=ns)
     return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": str(res)}
 
-# %% ../nbs/00_core.ipynb 63
+# %% ../nbs/00_core.ipynb 65
 @asave_iter
 async def astream_result(self, agen, postproc=noop):
     chunks = []
@@ -146,7 +146,7 @@ async def astream_result(self, agen, postproc=noop):
         yield chunk
     self.value = stream_chunk_builder(chunks)
 
-# %% ../nbs/00_core.ipynb 65
+# %% ../nbs/00_core.ipynb 67
 class AsyncChat(Chat):
     async def _call(self, msg=None, prefill=None, temp=None, think=None, stream=False, max_tool_rounds=1, tool_round=0, final_prompt=None, tool_choice=None, **kwargs):
         msgs = self._prepare_msgs(msg, prefill)
