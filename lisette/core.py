@@ -11,7 +11,7 @@ import asyncio, base64, json, litellm, mimetypes
 from typing import Optional
 from html import escape
 from litellm import acompletion, completion, stream_chunk_builder, Message, ModelResponse, ModelResponseStream, get_model_info
-from litellm.utils import function_to_dict
+from litellm.utils import function_to_dict, StreamingChoices, Delta
 from toolslm.funccall import mk_ns, call_func, call_func_async, get_schema
 from fastcore.utils import *
 from fastcore import imghdr
@@ -150,6 +150,9 @@ def cite_footnotes(stream_list):
 effort = AttrDict({o[0]:o for o in ('low','medium','high')})
 
 # %% ../nbs/00_core.ipynb 78
+def _mk_prefill(pf): return ModelResponseStream([StreamingChoices(delta=Delta(content=pf,role='assistant'))])
+
+# %% ../nbs/00_core.ipynb 79
 class Chat:
     def __init__(self,
                  model:str,                # LiteLLM compatible model name 
@@ -172,12 +175,12 @@ class Chat:
         "Prepare the messages list for the API call"
         sp = [{"role": "system", "content": self.sp}] if self.sp else []
         if msgs: self.hist+=mk_msgs(msgs,cache=self.cache)
-        if not (prefill and get_model_info(self.model)["supports_assistant_prefill"]): pf=[] 
-        else: pf = self.hist.append({"role":"assistant","content":prefill})
+        pf = [{"role":"assistant","content":prefill}] if prefill else []
         return sp + self.hist + pf
 
     def _call(self, msgs=None, prefill=None, temp=None, think=None, search=None, stream=False, max_tool_rounds=1, tool_round=0, final_prompt=None, tool_choice=None, **kwargs):
         "Internal method that always yields responses"
+        if not get_model_info(self.model)["supports_assistant_prefill"]: prefill=None
         if _has_search(self.model) and (s:=ifnone(search,self.search)): kwargs['web_search_options'] = {"search_context_size": effort[s]}
         else: _=kwargs.pop('web_search_options',None)
         res = completion(model=self.model, messages=self._prep_msgs(msgs, prefill), stream=stream, 
@@ -185,8 +188,11 @@ class Chat:
                          # temperature is not supported when reasoning
                          temperature=None if think else ifnone(temp,self.temp),
                          **kwargs)
-        if stream: res = yield from stream_with_complete(res,postproc=cite_footnotes)
+        if stream:
+            if prefill: yield _mk_prefill(prefill)
+            res = yield from stream_with_complete(res,postproc=cite_footnotes)
         m = res.choices[0].message
+        if prefill: m.content = prefill + m.content
         self.hist.append(m)
         yield res
 
@@ -217,12 +223,12 @@ class Chat:
         elif return_all: return list(result_gen)  # toolloop behavior
         else: return last(result_gen)             # normal chat behavior
 
-# %% ../nbs/00_core.ipynb 99
+# %% ../nbs/00_core.ipynb 107
 async def _alite_call_func(tc, ns, raise_on_err=True):
     res = await call_func_async(tc.function.name, json.loads(tc.function.arguments), ns=ns)
     return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": str(res)}
 
-# %% ../nbs/00_core.ipynb 101
+# %% ../nbs/00_core.ipynb 109
 @asave_iter
 async def astream_result(self, agen, postproc=noop):
     chunks = []
@@ -232,9 +238,10 @@ async def astream_result(self, agen, postproc=noop):
         yield chunk
     self.value = stream_chunk_builder(chunks)
 
-# %% ../nbs/00_core.ipynb 103
+# %% ../nbs/00_core.ipynb 111
 class AsyncChat(Chat):
     async def _call(self, msgs=None, prefill=None, temp=None, think=None, search=None, stream=False, max_tool_rounds=1, tool_round=0, final_prompt=None, tool_choice=None, **kwargs):
+        if not get_model_info(self.model)["supports_assistant_prefill"]: prefill=None
         if _has_search(self.model) and (s:=ifnone(search,self.search)): kwargs['web_search_options'] = {"search_context_size": effort[s]}
         else: _=kwargs.pop('web_search_options',None)
         res = await acompletion(model=self.model, messages=self._prep_msgs(msgs, prefill), stream=stream,
@@ -243,12 +250,14 @@ class AsyncChat(Chat):
                          temperature=None if think else ifnone(temp,self.temp), 
                          **kwargs)
         if stream:
+            if prefill: yield _mk_prefill(prefill)
             res = astream_result(res,postproc=cite_footnote)
             async for chunk in res: yield chunk
             res = res.value
-        
+        m=res.choices[0].message
+        if prefill: m.content = prefill + m.content
         yield res
-        self.hist.append(m:=res.choices[0].message)
+        self.hist.append(m)
 
         if tcs := m.tool_calls:
             tool_results = []
@@ -282,18 +291,18 @@ class AsyncChat(Chat):
         async for res in result_gen: pass
         return res # normal chat behavior only return last msg
 
-# %% ../nbs/00_core.ipynb 112
+# %% ../nbs/00_core.ipynb 120
 def _clean_str(text):
     "Clean content to prevent breaking surrounding markdown formatting."
     return escape(str(text)).replace('`', '').replace('\n', ' ').replace('|', ' ')
 
-# %% ../nbs/00_core.ipynb 113
+# %% ../nbs/00_core.ipynb 121
 def _trunc_str(s, mx=2000, replace="…"):
     "Truncate `s` to `mx` chars max, adding `replace` if truncated"
     s = str(s).strip()
     return s[:mx]+replace if len(s)>mx else s
 
-# %% ../nbs/00_core.ipynb 114
+# %% ../nbs/00_core.ipynb 122
 async def aformat_stream(rs):
     "Format the response stream for markdown display."
     think = False
@@ -313,7 +322,7 @@ async def aformat_stream(rs):
         elif isinstance(o, dict) and 'tool_call_id' in o: 
             yield f"  - `{_trunc_str(_clean_str(o.get('content')))}`\n\n</details>\n\n"
 
-# %% ../nbs/00_core.ipynb 115
+# %% ../nbs/00_core.ipynb 123
 async def adisplay_stream(rs):
     "Use IPython.display to markdown display the response stream."
     md = ''
