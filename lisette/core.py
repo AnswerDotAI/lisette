@@ -187,18 +187,18 @@ class AsyncChat(Chat):
         async for res in result_gen: pass
         return res # normal chat behavior only return last msg
 
-# %% ../nbs/00_core.ipynb 74
+# %% ../nbs/00_core.ipynb 76
 def _clean_str(text):
-    "Clean content to prevent formatted content from breaking the tool result formatting."
+    "Clean content to prevent breaking surrounding markdown formatting."
     return escape(str(text)).replace('`', '').replace('\n', ' ').replace('|', ' ')
 
-# %% ../nbs/00_core.ipynb 75
+# %% ../nbs/00_core.ipynb 77
 def _trunc_str(s, mx=2000, replace="…"):
     "Truncate `s` to `mx` chars max, adding `replace` if truncated"
     s = str(s).strip()
     return s[:mx]+replace if len(s)>mx else s
 
-# %% ../nbs/00_core.ipynb 76
+# %% ../nbs/00_core.ipynb 78
 async def aformat_stream(rs):
     "Format the response stream for markdown display."
     think = False
@@ -218,7 +218,7 @@ async def aformat_stream(rs):
         elif isinstance(o, dict) and 'tool_call_id' in o: 
             yield f"  - `{_trunc_str(_clean_str(o.get('content')))}`\n\n</details>\n\n"
 
-# %% ../nbs/00_core.ipynb 77
+# %% ../nbs/00_core.ipynb 79
 async def adisplay_stream(rs):
     "Use IPython.display to markdown display the response stream."
     md = ''
