@@ -54,8 +54,10 @@ def _mk_img(data:bytes)->tuple:
 def _is_img(data): 
     return isinstance(data, bytes) and bool(imghdr.what(None, data))
 
-def _add_cache_control(msg, cache=False, ttl=None):
-    "cache `msg` with optional ttl."
+def _add_cache_control(msg,          # LiteLLM formatted msg
+                       cache=False,  # Enable Anthropic caching
+                       ttl=None):    # Cache TTL: '5m' (default) or '1h'
+    "cache `msg` with default time-to-live (ttl) of 5minutes ('5m'), but can be set to '1h'."
     if not cache: return msg
     if isinstance(msg["content"], str): 
         msg["content"] = [{"type": "text", "text": msg["content"]}]
@@ -68,47 +70,47 @@ def _add_cache_control(msg, cache=False, ttl=None):
 def _remove_cache_ckpts(msg):
     "remove unnecessary cache checkpoints."
     if isinstance(msg["content"], str): 
-        msg["content"] = [{"type": "input_text", "text": msg["content"]}]
+        msg["content"] = [{"type": "text", "text": msg["content"]}]
     elif isinstance(msg["content"], list) and msg["content"]:
         msg["content"][-1].pop('cache_control', None)
     return msg
 
-def _parse_multi_content(content):
-    res = []
-    for o in content:
-        if isinstance(o, str): 
-            res.append({'type':'text','text':o if o.strip() else '.'} if len(content)>1 else o)
-        elif _is_img(o):
-            img, mtype = _mk_img(o)
-            res.append({"type": "image_url", "image_url": f"data:{mtype};base64,{img}"})
-        else: res.append(o)
-    return res
+def _mk_content(o):
+    if isinstance(o, str): return {'type':'text','text':o.strip() or '.'}
+    if _is_img(o): 
+        img, mtype = _mk_img(o)
+        return {"type": "image_url", "image_url": f"data:{mtype};base64,{img}"}
+    return o
 
-def mk_msg(content, role="user", cache=False, ttl=None):
-    "Create an LiteLLM compatible message."
+def mk_msg(content,      # Content: str, bytes (image), list of mixed content, or dict w 'role' and 'content' fields
+           role="user",  # Message role if content isn't already a dict/Message
+           cache=False,  # Enable Anthropic caching
+           ttl=None):    # Cache TTL: '5m' (default) or '1h'
+    "Create a LiteLLM compatible message."
     if isinstance(content, dict) or isinstance(content, Message): return content
-    elif isinstance(content, list):
-        if len(content) == 1 and isinstance(content[0], str): c = content[0]
-        else: c = _parse_multi_content(content)
+    if isinstance(content, list) and len(content) == 1 and isinstance(content[0], str): c = content[0]
+    elif isinstance(content, list): c = [_mk_content(o) for o in content]
     else: c = content
-    
-    msg = {"role": role, "content": c}
-    return _add_cache_control(msg, cache=cache, ttl=ttl)
+    return _add_cache_control({"role": role, "content": c}, cache=cache, ttl=ttl)
 
 # %% ../nbs/00_core.ipynb 30
-def mk_msgs(msgs, cache=False, ttl=None, cache_last_ckpt_only=False):
+def mk_msgs(msgs,                       # List of messages (each: str, bytes, list, or dict w 'role' and 'content' fields)
+            cache=False,                # Enable Anthropic caching
+            ttl=None,                   # Cache TTL: '5m' (default) or '1h'
+            cache_last_ckpt_only=False  # Only cache the last message
+           ):
     "Create a list of LiteLLM compatible messages."
     if not msgs: return []
-    if isinstance(msgs, str): msgs = [msgs]
+    if not isinstance(msgs, list): msgs = [msgs]
     res,role = [],'user'
     for m in msgs:
-        res.append(mk_msg(m, role=role,cache=cache))
-        role = 'assistant' if role in ('user','function', 'tool') else 'user'
+        res.append(msg:=mk_msg(m, role=role,cache=cache))
+        role = 'assistant' if msg['role'] in ('user','function', 'tool') else 'user'
     if cache and cache_last_ckpt_only: result = [_remove_cache_ckpts(m) for m in result]
     if res and cache: res[-1] = _add_cache_control(res[-1], cache=cache, ttl=ttl)
     return res
 
-# %% ../nbs/00_core.ipynb 35
+# %% ../nbs/00_core.ipynb 43
 def stream_with_complete(gen, postproc=noop):
     "Extend streaming response chunks with the complete response"
     chunks = []
@@ -118,17 +120,17 @@ def stream_with_complete(gen, postproc=noop):
     postproc(chunks)
     return stream_chunk_builder(chunks)
 
-# %% ../nbs/00_core.ipynb 42
+# %% ../nbs/00_core.ipynb 50
 def _lite_mk_func(f):
     if isinstance(f, dict): return f
     return {'type':'function', 'function':get_schema(f, pname='parameters')}
 
-# %% ../nbs/00_core.ipynb 47
+# %% ../nbs/00_core.ipynb 55
 def _lite_call_func(tc,ns,raise_on_err=True):
     res = call_func(tc.function.name, json.loads(tc.function.arguments),ns=ns)
     return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": str(res)}
 
-# %% ../nbs/00_core.ipynb 58
+# %% ../nbs/00_core.ipynb 66
 def cite_footnote(msg):
     if not (delta:=nested_idx(msg, 'choices', 0, 'delta')): return
     if citation:= nested_idx(delta, 'provider_specific_fields', 'citation'):
@@ -139,10 +141,10 @@ def cite_footnotes(stream_list):
     "Add markdown footnote citations to stream deltas"
     for msg in stream_list: cite_footnote(msg)
 
-# %% ../nbs/00_core.ipynb 62
+# %% ../nbs/00_core.ipynb 70
 effort = AttrDict({o[0]:o for o in ('low','medium','high')})
 
-# %% ../nbs/00_core.ipynb 63
+# %% ../nbs/00_core.ipynb 71
 class Chat:
     def __init__(self, model:str, sp='', temp=0, tools:list=None, hist:list=None, ns:Optional[dict]=None, cache=False):
         "LiteLLM chat client."
@@ -190,12 +192,12 @@ class Chat:
         elif return_all: return list(result_gen)  # toolloop behavior
         else: return last(result_gen)             # normal chat behavior
 
-# %% ../nbs/00_core.ipynb 83
+# %% ../nbs/00_core.ipynb 91
 async def _alite_call_func(tc, ns, raise_on_err=True):
     res = await call_func_async(tc.function.name, json.loads(tc.function.arguments), ns=ns)
     return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": str(res)}
 
-# %% ../nbs/00_core.ipynb 85
+# %% ../nbs/00_core.ipynb 93
 @asave_iter
 async def astream_result(self, agen, postproc=noop):
     chunks = []
@@ -205,7 +207,7 @@ async def astream_result(self, agen, postproc=noop):
         yield chunk
     self.value = stream_chunk_builder(chunks)
 
-# %% ../nbs/00_core.ipynb 87
+# %% ../nbs/00_core.ipynb 95
 class AsyncChat(Chat):
     async def _call(self, msgs=None, prefill=None, temp=None, think=None, stream=False, max_tool_rounds=1, tool_round=0, final_prompt=None, tool_choice=None, **kwargs):
         msgs = self._prep_msgs(msgs, prefill)
@@ -244,18 +246,18 @@ class AsyncChat(Chat):
         async for res in result_gen: pass
         return res # normal chat behavior only return last msg
 
-# %% ../nbs/00_core.ipynb 96
+# %% ../nbs/00_core.ipynb 104
 def _clean_str(text):
     "Clean content to prevent breaking surrounding markdown formatting."
     return escape(str(text)).replace('`', '').replace('\n', ' ').replace('|', ' ')
 
-# %% ../nbs/00_core.ipynb 97
+# %% ../nbs/00_core.ipynb 105
 def _trunc_str(s, mx=2000, replace="…"):
     "Truncate `s` to `mx` chars max, adding `replace` if truncated"
     s = str(s).strip()
     return s[:mx]+replace if len(s)>mx else s
 
-# %% ../nbs/00_core.ipynb 98
+# %% ../nbs/00_core.ipynb 106
 async def aformat_stream(rs):
     "Format the response stream for markdown display."
     think = False
@@ -275,7 +277,7 @@ async def aformat_stream(rs):
         elif isinstance(o, dict) and 'tool_call_id' in o: 
             yield f"  - `{_trunc_str(_clean_str(o.get('content')))}`\n\n</details>\n\n"
 
-# %% ../nbs/00_core.ipynb 99
+# %% ../nbs/00_core.ipynb 107
 async def adisplay_stream(rs):
     "Use IPython.display to markdown display the response stream."
     md = ''
