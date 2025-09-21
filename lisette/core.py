@@ -6,7 +6,7 @@
 __all__ = ['effort', 'mk_msg', 'mk_msgs', 'stream_with_complete', 'cite_footnote', 'cite_footnotes', 'Chat', 'astream_result',
            'AsyncChat', 'aformat_stream', 'adisplay_stream']
 
-# %% ../nbs/00_core.ipynb 2
+# %% ../nbs/00_core.ipynb
 import asyncio, base64, json, litellm, mimetypes
 from typing import Optional
 from html import escape
@@ -17,7 +17,7 @@ from fastcore.utils import *
 from fastcore import imghdr
 
 
-# %% ../nbs/00_core.ipynb 9
+# %% ../nbs/00_core.ipynb
 @patch
 def _repr_markdown_(self: litellm.ModelResponse):
     message = self.choices[0].message
@@ -43,14 +43,14 @@ def _repr_markdown_(self: litellm.ModelResponse):
 
 </details>"""
 
-# %% ../nbs/00_core.ipynb 15
+# %% ../nbs/00_core.ipynb
 def _mk_img(data:bytes)->tuple:
     "Convert image bytes to a base64 encoded image"
     img = base64.b64encode(data).decode("utf-8")
     mtype = mimetypes.types_map["."+imghdr.what(None, h=data)]
     return img, mtype
 
-# %% ../nbs/00_core.ipynb 18
+# %% ../nbs/00_core.ipynb
 def _is_img(data): 
     return isinstance(data, bytes) and bool(imghdr.what(None, data))
 
@@ -93,7 +93,7 @@ def mk_msg(content,      # Content: str, bytes (image), list of mixed content, o
     else: c = content
     return _add_cache_control({"role": role, "content": c}, cache=cache, ttl=ttl)
 
-# %% ../nbs/00_core.ipynb 30
+# %% ../nbs/00_core.ipynb
 def mk_msgs(msgs,                       # List of messages (each: str, bytes, list, or dict w 'role' and 'content' fields)
             cache=False,                # Enable Anthropic caching
             ttl=None,                   # Cache TTL: '5m' (default) or '1h'
@@ -110,7 +110,7 @@ def mk_msgs(msgs,                       # List of messages (each: str, bytes, li
     if res and cache: res[-1] = _add_cache_control(res[-1], cache=cache, ttl=ttl)
     return res
 
-# %% ../nbs/00_core.ipynb 43
+# %% ../nbs/00_core.ipynb
 def stream_with_complete(gen, postproc=noop):
     "Extend streaming response chunks with the complete response"
     chunks = []
@@ -120,22 +120,22 @@ def stream_with_complete(gen, postproc=noop):
     postproc(chunks)
     return stream_chunk_builder(chunks)
 
-# %% ../nbs/00_core.ipynb 50
+# %% ../nbs/00_core.ipynb
 def _lite_mk_func(f):
     if isinstance(f, dict): return f
     return {'type':'function', 'function':get_schema(f, pname='parameters')}
 
-# %% ../nbs/00_core.ipynb 55
+# %% ../nbs/00_core.ipynb
 def _lite_call_func(tc,ns,raise_on_err=True):
     res = call_func(tc.function.name, json.loads(tc.function.arguments),ns=ns)
     return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": str(res)}
 
-# %% ../nbs/00_core.ipynb 66
+# %% ../nbs/00_core.ipynb
 def _has_search(m):
     i = get_model_info(m)
     return bool(i['search_context_cost_per_query'] or i['supports_web_search'])
 
-# %% ../nbs/00_core.ipynb 73
+# %% ../nbs/00_core.ipynb
 def cite_footnote(msg):
     if not (delta:=nested_idx(msg, 'choices', 0, 'delta')): return
     if citation:= nested_idx(delta, 'provider_specific_fields', 'citation'):
@@ -146,13 +146,13 @@ def cite_footnotes(stream_list):
     "Add markdown footnote citations to stream deltas"
     for msg in stream_list: cite_footnote(msg)
 
-# %% ../nbs/00_core.ipynb 77
+# %% ../nbs/00_core.ipynb
 effort = AttrDict({o[0]:o for o in ('low','medium','high')})
 
-# %% ../nbs/00_core.ipynb 78
+# %% ../nbs/00_core.ipynb
 def _mk_prefill(pf): return ModelResponseStream([StreamingChoices(delta=Delta(content=pf,role='assistant'))])
 
-# %% ../nbs/00_core.ipynb 79
+# %% ../nbs/00_core.ipynb
 class Chat:
     def __init__(self,
                  model:str,                # LiteLLM compatible model name 
@@ -223,12 +223,12 @@ class Chat:
         elif return_all: return list(result_gen)  # toolloop behavior
         else: return last(result_gen)             # normal chat behavior
 
-# %% ../nbs/00_core.ipynb 109
+# %% ../nbs/00_core.ipynb
 async def _alite_call_func(tc, ns, raise_on_err=True):
     res = await call_func_async(tc.function.name, json.loads(tc.function.arguments), ns=ns)
     return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": str(res)}
 
-# %% ../nbs/00_core.ipynb 111
+# %% ../nbs/00_core.ipynb
 @asave_iter
 async def astream_result(self, agen, postproc=noop):
     chunks = []
@@ -238,7 +238,7 @@ async def astream_result(self, agen, postproc=noop):
         yield chunk
     self.value = stream_chunk_builder(chunks)
 
-# %% ../nbs/00_core.ipynb 113
+# %% ../nbs/00_core.ipynb
 class AsyncChat(Chat):
     async def _call(self, msgs=None, prefill=None, temp=None, think=None, search=None, stream=False, max_tool_rounds=1, tool_round=0, final_prompt=None, tool_choice=None, **kwargs):
         if not get_model_info(self.model)["supports_assistant_prefill"]: prefill=None
@@ -291,18 +291,18 @@ class AsyncChat(Chat):
         async for res in result_gen: pass
         return res # normal chat behavior only return last msg
 
-# %% ../nbs/00_core.ipynb 122
+# %% ../nbs/00_core.ipynb
 def _clean_str(text):
     "Clean content to prevent breaking surrounding markdown formatting."
     return escape(str(text)).replace('`', '').replace('\n', ' ').replace('|', ' ')
 
-# %% ../nbs/00_core.ipynb 123
+# %% ../nbs/00_core.ipynb
 def _trunc_str(s, mx=2000, replace="…"):
     "Truncate `s` to `mx` chars max, adding `replace` if truncated"
     s = str(s).strip()
     return s[:mx]+replace if len(s)>mx else s
 
-# %% ../nbs/00_core.ipynb 124
+# %% ../nbs/00_core.ipynb
 async def aformat_stream(rs):
     "Format the response stream for markdown display."
     think = False
@@ -322,7 +322,7 @@ async def aformat_stream(rs):
         elif isinstance(o, dict) and 'tool_call_id' in o: 
             yield f"  - `{_trunc_str(_clean_str(o.get('content')))}`\n\n</details>\n\n"
 
-# %% ../nbs/00_core.ipynb 125
+# %% ../nbs/00_core.ipynb
 async def adisplay_stream(rs):
     "Use IPython.display to markdown display the response stream."
     md = ''
