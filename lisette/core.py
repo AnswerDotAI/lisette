@@ -203,7 +203,7 @@ class Chat:
                 tool_results += ([{"role": "user", "content": final_prompt}] if final_prompt else [])
                 tool_choice,search='none',False
             yield from self._call(
-                tool_results, prefill, temp, None, search, stream, max_tool_rounds, tool_round+1,
+                tool_results, prefill, temp, think, search, stream, max_tool_rounds, tool_round+1,
                 final_prompt, tool_choice=tool_choice, **kwargs)
     
     def __call__(self,
@@ -223,12 +223,12 @@ class Chat:
         elif return_all: return list(result_gen)  # toolloop behavior
         else: return last(result_gen)             # normal chat behavior
 
-# %% ../nbs/00_core.ipynb 107
+# %% ../nbs/00_core.ipynb 109
 async def _alite_call_func(tc, ns, raise_on_err=True):
     res = await call_func_async(tc.function.name, json.loads(tc.function.arguments), ns=ns)
     return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": str(res)}
 
-# %% ../nbs/00_core.ipynb 109
+# %% ../nbs/00_core.ipynb 111
 @asave_iter
 async def astream_result(self, agen, postproc=noop):
     chunks = []
@@ -238,7 +238,7 @@ async def astream_result(self, agen, postproc=noop):
         yield chunk
     self.value = stream_chunk_builder(chunks)
 
-# %% ../nbs/00_core.ipynb 111
+# %% ../nbs/00_core.ipynb 113
 class AsyncChat(Chat):
     async def _call(self, msgs=None, prefill=None, temp=None, think=None, search=None, stream=False, max_tool_rounds=1, tool_round=0, final_prompt=None, tool_choice=None, **kwargs):
         if not get_model_info(self.model)["supports_assistant_prefill"]: prefill=None
@@ -271,7 +271,7 @@ class AsyncChat(Chat):
                 tool_choice,search = 'none',False
             
             async for result in self._call(
-                tool_results, prefill, temp, None, search, stream, max_tool_rounds, tool_round+1,
+                tool_results, prefill, temp, think, search, stream, max_tool_rounds, tool_round+1,
                 final_prompt, tool_choice=tool_choice, **kwargs):
                     yield result
     
@@ -291,18 +291,18 @@ class AsyncChat(Chat):
         async for res in result_gen: pass
         return res # normal chat behavior only return last msg
 
-# %% ../nbs/00_core.ipynb 120
+# %% ../nbs/00_core.ipynb 122
 def _clean_str(text):
     "Clean content to prevent breaking surrounding markdown formatting."
     return escape(str(text)).replace('`', '').replace('\n', ' ').replace('|', ' ')
 
-# %% ../nbs/00_core.ipynb 121
+# %% ../nbs/00_core.ipynb 123
 def _trunc_str(s, mx=2000, replace="…"):
     "Truncate `s` to `mx` chars max, adding `replace` if truncated"
     s = str(s).strip()
     return s[:mx]+replace if len(s)>mx else s
 
-# %% ../nbs/00_core.ipynb 122
+# %% ../nbs/00_core.ipynb 124
 async def aformat_stream(rs):
     "Format the response stream for markdown display."
     think = False
@@ -322,7 +322,7 @@ async def aformat_stream(rs):
         elif isinstance(o, dict) and 'tool_call_id' in o: 
             yield f"  - `{_trunc_str(_clean_str(o.get('content')))}`\n\n</details>\n\n"
 
-# %% ../nbs/00_core.ipynb 123
+# %% ../nbs/00_core.ipynb 125
 async def adisplay_stream(rs):
     "Use IPython.display to markdown display the response stream."
     md = ''
