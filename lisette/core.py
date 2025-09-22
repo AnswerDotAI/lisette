@@ -22,7 +22,7 @@ from fastcore import imghdr
 def _repr_markdown_(self: litellm.ModelResponse):
     message = self.choices[0].message
     content = ''
-    if message.content: content += message.content
+    if mc:=message.content: content += mc[0]['text'] if isinstance(mc,list) else mc
     if message.tool_calls:
         tool_calls = [f"\n\n🔧 {nested_idx(tc,'function','name')}({nested_idx(tc,'function','arguments')})\n" for tc in message.tool_calls]
         content += "\n".join(tool_calls)
