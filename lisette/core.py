@@ -10,12 +10,12 @@ __all__ = ['effort', 'mk_msg', 'mk_msgs', 'stream_with_complete', 'cite_footnote
 import asyncio, base64, json, litellm, mimetypes
 from typing import Optional
 from html import escape
-from litellm import acompletion, completion, stream_chunk_builder, Message, ModelResponse, ModelResponseStream, get_model_info
+from litellm import (acompletion, completion, stream_chunk_builder, Message,
+                     ModelResponse, ModelResponseStream, get_model_info)
 from litellm.utils import function_to_dict, StreamingChoices, Delta
 from toolslm.funccall import mk_ns, call_func, call_func_async, get_schema
 from fastcore.utils import *
 from fastcore import imghdr
-
 
 # %% ../nbs/00_core.ipynb
 @patch
@@ -97,7 +97,7 @@ def mk_msg(content,      # Content: str, bytes (image), list of mixed content, o
 def mk_msgs(msgs,                       # List of messages (each: str, bytes, list, or dict w 'role' and 'content' fields)
             cache=False,                # Enable Anthropic caching
             ttl=None,                   # Cache TTL: '5m' (default) or '1h'
-            cache_last_ckpt_only=False  # Only cache the last message
+            cache_last_ckpt_only=True   # Only cache the last message
            ):
     "Create a list of LiteLLM compatible messages."
     if not msgs: return []
@@ -106,7 +106,7 @@ def mk_msgs(msgs,                       # List of messages (each: str, bytes, li
     for m in msgs:
         res.append(msg:=mk_msg(m, role=role,cache=cache))
         role = 'assistant' if msg['role'] in ('user','function', 'tool') else 'user'
-    if cache and cache_last_ckpt_only: result = [_remove_cache_ckpts(m) for m in result]
+    if cache_last_ckpt_only: res = [_remove_cache_ckpts(m) for m in res]
     if res and cache: res[-1] = _add_cache_control(res[-1], cache=cache, ttl=ttl)
     return res
 
@@ -127,7 +127,9 @@ def _lite_mk_func(f):
 
 # %% ../nbs/00_core.ipynb
 def _lite_call_func(tc,ns,raise_on_err=True):
-    res = call_func(tc.function.name, json.loads(tc.function.arguments),ns=ns)
+    try: fargs = json.loads(tc.function.arguments)
+    except Exception as e: raise ValueError(f"Failed to parse function arguments: {tc.function.arguments}") from e
+    res = call_func(tc.function.name, fargs,ns=ns)
     return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": str(res)}
 
 # %% ../nbs/00_core.ipynb
@@ -154,15 +156,17 @@ def _mk_prefill(pf): return ModelResponseStream([StreamingChoices(delta=Delta(co
 
 # %% ../nbs/00_core.ipynb
 class Chat:
-    def __init__(self,
-                 model:str,                # LiteLLM compatible model name 
-                 sp='',                    # System prompt
-                 temp=0,                   # Temperature
-                 search=False,             # Search (l,m,h), if model supports it
-                 tools:list=None,          # Add tools
-                 hist:list=None,           # Chat history
-                 ns:Optional[dict]=None,   # Custom namespace for tool calling 
-                 cache=False):             # Anthropic prompt caching
+    def __init__(
+        self,
+        model:str,                # LiteLLM compatible model name 
+        sp='',                    # System prompt
+        temp=0,                   # Temperature
+        search=False,             # Search (l,m,h), if model supports it
+        tools:list=None,          # Add tools
+        hist:list=None,           # Chat history
+        ns:Optional[dict]=None,   # Custom namespace for tool calling 
+        cache=False               # Anthropic prompt caching
+    ):
         "LiteLLM chat client."
         self.model = model
         hist,tools = mk_msgs(hist),listify(tools)
@@ -174,7 +178,7 @@ class Chat:
     def _prep_msgs(self, msgs=None, prefill=None):
         "Prepare the messages list for the API call"
         sp = [{"role": "system", "content": self.sp}] if self.sp else []
-        if msgs: self.hist+=mk_msgs(msgs,cache=self.cache)
+        if msgs: self.hist = mk_msgs(self.hist+msgs,cache=self.cache)
         pf = [{"role":"assistant","content":prefill}] if prefill else []
         return sp + self.hist + pf
 
@@ -225,7 +229,9 @@ class Chat:
 
 # %% ../nbs/00_core.ipynb
 async def _alite_call_func(tc, ns, raise_on_err=True):
-    res = await call_func_async(tc.function.name, json.loads(tc.function.arguments), ns=ns)
+    try: fargs = json.loads(tc.function.arguments)
+    except Exception as e: raise ValueError(f"Failed to parse function arguments: {tc.function.arguments}") from e
+    res = await call_func_async(tc.function.name, fargs, ns=ns)
     return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": str(res)}
 
 # %% ../nbs/00_core.ipynb
