@@ -178,7 +178,7 @@ class Chat:
     def _prep_msgs(self, msgs=None, prefill=None):
         "Prepare the messages list for the API call"
         sp = [{"role": "system", "content": self.sp}] if self.sp else []
-        if msgs: self.hist = mk_msgs(self.hist+msgs,cache=self.cache)
+        if msgs: self.hist = mk_msgs(self.hist+(msgs if isinstance(msgs,list) else [msgs]), cache=self.cache)
         pf = [{"role":"assistant","content":prefill}] if prefill else []
         return sp + self.hist + pf
 
