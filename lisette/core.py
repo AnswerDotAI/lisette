@@ -4,7 +4,7 @@
 
 # %% auto 0
 __all__ = ['effort', 'mk_msg', 'mk_msgs', 'stream_with_complete', 'lite_mk_func', 'cite_footnote', 'cite_footnotes', 'Chat',
-           'AsyncChat', 'aformat_stream', 'adisplay_stream']
+           'astream_with_complete', 'AsyncChat', 'aformat_stream', 'adisplay_stream']
 
 # %% ../nbs/00_core.ipynb
 import asyncio, base64, json, litellm, mimetypes
@@ -180,9 +180,9 @@ class Chat:
         pf = [{"role":"assistant","content":prefill}] if prefill else []
         return sp + self.hist + pf
 
-    def _call(self, msgs=None, prefill=None, temp=None, think=None, search=None, stream=False, max_tool_rounds=1, tool_round=1, final_prompt=None, tool_choice=None, **kwargs):
+    def _call(self, msgs=None, prefill=None, temp=None, think=None, search=None, stream=False, max_steps=2, step=1, final_prompt=None, tool_choice=None, **kwargs):
         "Internal method that always yields responses"
-        if tool_round>max_tool_rounds+1: return  # +1 because there's one more round for the final_prompt w/o tools
+        if step>max_steps: return
         if not get_model_info(self.model)["supports_assistant_prefill"]: prefill=None
         if _has_search(self.model) and (s:=ifnone(search,self.search)): kwargs['web_search_options'] = {"search_context_size": effort[s]}
         else: _=kwargs.pop('web_search_options',None)
@@ -202,11 +202,11 @@ class Chat:
         if tcs := m.tool_calls:
             tool_results = [_lite_call_func(tc, ns=self.ns) for tc in tcs]
             for r in tool_results: yield r
-            if tool_round==max_tool_rounds:
+            if step>=max_steps-1:
                 tool_results += ([{"role": "user", "content": final_prompt}] if final_prompt else [])
                 tool_choice,search = 'none',False
             yield from self._call(
-                tool_results, prefill, temp, think, search, stream, max_tool_rounds, tool_round+1,
+                tool_results, prefill, temp, think, search, stream, max_steps, step+1,
                 final_prompt, tool_choice, **kwargs)
     
     def __call__(self,
@@ -216,12 +216,12 @@ class Chat:
                  think=None,        # Thinking (l,m,h)
                  search=None,       # Override search set on chat initialization (l,m,h)
                  stream=False,      # Stream results
-                 max_tool_rounds=1, # Maximum number of tool calls
+                 max_steps=1, # Maximum number of tool calls
                  final_prompt=None, # Final prompt when tool calls have ran out 
                  return_all=False,  # Returns all intermediate ModelResponses if not streaming and has tool calls
                  **kwargs):
         "Main call method - handles streaming vs non-streaming"
-        result_gen = self._call(msgs, prefill, temp, think, search, stream, max_tool_rounds, 1, final_prompt, **kwargs)     
+        result_gen = self._call(msgs, prefill, temp, think, search, stream, max_steps, 1, final_prompt, **kwargs)     
         if stream: return result_gen              # streaming
         elif return_all: return list(result_gen)  # toolloop behavior
         else: return last(result_gen)             # normal chat behavior
@@ -234,9 +234,19 @@ async def _alite_call_func(tc, ns, raise_on_err=True):
     return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": str(res)}
 
 # %% ../nbs/00_core.ipynb
+@asave_iter
+async def astream_with_complete(self, agen, postproc=noop):
+    chunks = []
+    async for chunk in agen:
+        chunks.append(chunk)
+        postproc(chunk)
+        yield chunk
+    self.value = stream_chunk_builder(chunks)
+
+# %% ../nbs/00_core.ipynb
 class AsyncChat(Chat):
-    async def _call(self, msgs=None, prefill=None, temp=None, think=None, search=None, stream=False, max_tool_rounds=1, tool_round=1, final_prompt=None, tool_choice=None, **kwargs):
-        if tool_round>max_tool_rounds+1: return  # +1 because there's one more round for the final_prompt w/o tools
+    async def _call(self, msgs=None, prefill=None, temp=None, think=None, search=None, stream=False, max_steps=1, step=1, final_prompt=None, tool_choice=None, **kwargs):
+        if step>max_steps+1: return
         if not get_model_info(self.model)["supports_assistant_prefill"]: prefill=None
         if _has_search(self.model) and (s:=ifnone(search,self.search)): kwargs['web_search_options'] = {"search_context_size": effort[s]}
         else: _=kwargs.pop('web_search_options',None)
@@ -262,12 +272,12 @@ class AsyncChat(Chat):
                 tool_results.append(result)
                 yield result
             
-            if tool_round==max_tool_rounds:
+            if step>=max_steps-1:
                 tool_results += ([{"role": "user", "content": final_prompt}] if final_prompt else [])
                 tool_choice,search = 'none',False
             
             async for result in self._call(
-                tool_results, prefill, temp, think, search, stream, max_tool_rounds, tool_round+1,
+                tool_results, prefill, temp, think, search, stream, max_steps, step+1,
                 final_prompt, tool_choice=tool_choice, **kwargs):
                     yield result
     
@@ -278,11 +288,11 @@ class AsyncChat(Chat):
                        think=None,        # Thinking (l,m,h)
                        search=None,       # Override search set on chat initialization (l,m,h)
                        stream=False,      # Stream results
-                       max_tool_rounds=1, # Maximum number of tool calls
+                       max_steps=1, # Maximum number of tool calls
                        final_prompt=None, # Final prompt when tool calls have ran out 
                        return_all=False,  # Returns all intermediate ModelResponses if not streaming and has tool calls
                        **kwargs):
-        result_gen = self._call(msgs, prefill, temp, think, search, stream, max_tool_rounds, 1, final_prompt, **kwargs)
+        result_gen = self._call(msgs, prefill, temp, think, search, stream, max_steps, 1, final_prompt, **kwargs)
         if stream or return_all: return result_gen
         async for res in result_gen: pass
         return res # normal chat behavior only return last msg
