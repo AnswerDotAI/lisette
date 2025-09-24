@@ -4,7 +4,8 @@
 
 # %% auto 0
 __all__ = ['effort', 'patch_litellm', 'mk_msg', 'mk_msgs', 'stream_with_complete', 'lite_mk_func', 'cite_footnote',
-           'cite_footnotes', 'Chat', 'astream_with_complete', 'AsyncChat', 'aformat_stream', 'adisplay_stream']
+           'cite_footnotes', 'Chat', 'astream_with_complete', 'AsyncChat', 'mk_tool_xml', 'aformat_stream',
+           'adisplay_stream']
 
 # %% ../nbs/00_core.ipynb
 import asyncio, base64, json, litellm, mimetypes
@@ -17,6 +18,7 @@ from litellm.utils import function_to_dict, StreamingChoices, Delta
 from toolslm.funccall import mk_ns, call_func, call_func_async, get_schema
 from fastcore.utils import *
 from fastcore import imghdr
+from fastcore.xml import ToolCalls, ToolCall, Arguments, Result
 
 # %% ../nbs/00_core.ipynb
 def patch_litellm():
@@ -322,9 +324,11 @@ def _trunc_str(s, mx=2000, replace="…"):
     return s[:mx]+replace if len(s)>mx else s
 
 # %% ../nbs/00_core.ipynb
+def mk_tool_xml(resp, tool_calls):
+    return ToolCalls(*[ToolCall(Arguments(tc.function.arguments), id=tc.id, name=tc.function.name, status="pending") for tc in tool_calls])
+
 async def aformat_stream(rs):
-    "Format the response stream for markdown display."
-    think = False
+    think,pending = False,{}
     async for o in rs:
         if isinstance(o, ModelResponseStream):
             d = o.choices[0].delta
@@ -336,10 +340,11 @@ async def aformat_stream(rs):
                 yield '\n\n'
             if c := d.content: yield c
         elif isinstance(o, ModelResponse) and (c := getattr(o.choices[0].message, 'tool_calls', None)):
-            fn = first(c).function
-            yield f"\n<details class='tool-usage-details'>\n\n `{fn.name}({_trunc_str(fn.arguments)})`\n"
-        elif isinstance(o, dict) and 'tool_call_id' in o: 
-            yield f"  - `{_trunc_str(_clean_str(o.get('content')))}`\n\n</details>\n\n"
+            for tc in c: pending[tc.id] = tc
+        elif isinstance(o, dict) and 'tool_call_id' in o:
+            tc = pending.pop(o['tool_call_id'])
+            xml = ToolCall(Arguments(tc.function.arguments), Result(o['content']), id=tc.id, name=tc.function.name, status="complete")
+            yield f"\n{ToolCalls(xml)}\n"
 
 # %% ../nbs/00_core.ipynb
 async def adisplay_stream(rs):

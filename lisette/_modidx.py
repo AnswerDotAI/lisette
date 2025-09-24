@@ -34,5 +34,6 @@ d = { 'settings': { 'branch': 'main',
                                                                                       'lisette/core.py'),
                               'lisette.core.mk_msg': ('core.html#mk_msg', 'lisette/core.py'),
                               'lisette.core.mk_msgs': ('core.html#mk_msgs', 'lisette/core.py'),
+                              'lisette.core.mk_tool_xml': ('core.html#mk_tool_xml', 'lisette/core.py'),
                               'lisette.core.patch_litellm': ('core.html#patch_litellm', 'lisette/core.py'),
                               'lisette.core.stream_with_complete': ('core.html#stream_with_complete', 'lisette/core.py')}}}
