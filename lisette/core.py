@@ -169,6 +169,9 @@ effort = AttrDict({o[0]:o for o in ('low','medium','high')})
 def _mk_prefill(pf): return ModelResponseStream([StreamingChoices(delta=Delta(content=pf,role='assistant'))])
 
 # %% ../nbs/00_core.ipynb
+_final_prompt = "You have no more tool uses. Please summarize your findings. If you did not complete your goal please tell the user what further work needs to be done so they can choose how best to proceed."
+
+# %% ../nbs/00_core.ipynb
 class Chat:
     def __init__(
         self,
@@ -233,7 +236,7 @@ class Chat:
                  search=None,       # Override search set on chat initialization (l,m,h)
                  stream=False,      # Stream results
                  max_steps=2, # Maximum number of tool calls
-                 final_prompt=None, # Final prompt when tool calls have ran out 
+                 final_prompt=_final_prompt, # Final prompt when tool calls have ran out 
                  return_all=False,  # Returns all intermediate ModelResponses if not streaming and has tool calls
                  **kwargs):
         "Main call method - handles streaming vs non-streaming"
@@ -328,7 +331,7 @@ class AsyncChat(Chat):
                        search=None,       # Override search set on chat initialization (l,m,h)
                        stream=False,      # Stream results
                        max_steps=2, # Maximum number of tool calls
-                       final_prompt=None, # Final prompt when tool calls have ran out 
+                       final_prompt=_final_prompt, # Final prompt when tool calls have ran out 
                        return_all=False,  # Returns all intermediate ModelResponses if not streaming and has tool calls
                        **kwargs):
         result_gen = self._call(msg, prefill, temp, think, search, stream, max_steps, 1, final_prompt, **kwargs)
