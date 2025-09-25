@@ -4,11 +4,11 @@
 
 # %% auto 0
 __all__ = ['effort', 'patch_litellm', 'mk_msg', 'mk_msgs', 'stream_with_complete', 'lite_mk_func', 'cite_footnote',
-           'cite_footnotes', 'Chat', 'astream_with_complete', 'AsyncChat', 'mk_tool_xml', 'aformat_stream',
-           'adisplay_stream']
+           'cite_footnotes', 'Chat', 'random_tool_id', 'mk_tc', 'mk_tc_result', 'mk_tc_results',
+           'astream_with_complete', 'AsyncChat', 'aformat_stream', 'adisplay_stream']
 
 # %% ../nbs/00_core.ipynb
-import asyncio, base64, json, litellm, mimetypes
+import asyncio, base64, json, litellm, mimetypes, random, string
 from typing import Optional
 from html import escape
 from IPython.display import Markdown
@@ -244,6 +244,31 @@ class Chat:
         else: return last(result_gen)             # normal chat behavior
 
 # %% ../nbs/00_core.ipynb
+@patch
+def print_hist(self:Chat):
+    "Print each message on a different line"
+    for r in self.hist: print(r, end='\n\n')
+
+# %% ../nbs/00_core.ipynb
+def random_tool_id():
+    "Generate a random tool ID with 'toolu_' prefix"
+    random_part = ''.join(random.choices(string.ascii_letters + string.digits, k=25))
+    return f'toolu_{random_part}'
+
+# %% ../nbs/00_core.ipynb
+def mk_tc(func, idx=1, **kwargs):
+    args = json.dumps(kwargs)
+    if callable(func): func = func.__name__
+    id = random_tool_id()
+    return {'index': idx, 'function': {'arguments': args, 'name': func}, 'id': id, 'type': 'function'}
+
+# %% ../nbs/00_core.ipynb
+def mk_tc_result(tc, result): return {'tool_call_id': tc['id'], 'role': 'tool', 'name': tc['function']['name'], 'content': result}
+
+# %% ../nbs/00_core.ipynb
+def mk_tc_results(tcq, results): return [mk_tc_result(a,b) for a,b in zip(tcq.tool_calls, results)]
+
+# %% ../nbs/00_core.ipynb
 async def _alite_call_func(tc, ns, raise_on_err=True):
     try: fargs = json.loads(tc.function.arguments)
     except Exception as e: raise ValueError(f"Failed to parse function arguments: {tc.function.arguments}") from e
@@ -324,9 +349,6 @@ def _trunc_str(s, mx=2000, replace="…"):
     return s[:mx]+replace if len(s)>mx else s
 
 # %% ../nbs/00_core.ipynb
-def mk_tool_xml(resp, tool_calls):
-    return ToolCalls(*[ToolCall(Arguments(tc.function.arguments), id=tc.id, name=tc.function.name, status="pending") for tc in tool_calls])
-
 async def aformat_stream(rs):
     think,pending = False,{}
     async for o in rs:
@@ -344,7 +366,7 @@ async def aformat_stream(rs):
         elif isinstance(o, dict) and 'tool_call_id' in o:
             tc = pending.pop(o['tool_call_id'])
             xml = ToolCall(Arguments(tc.function.arguments), Result(o['content']), id=tc.id, name=tc.function.name, status="complete")
-            yield f"\n{ToolCalls(xml)}\n"
+            yield f"\n<details class='tool-usage-details'>{ToolCalls(xml)}</details>\n"
 
 # %% ../nbs/00_core.ipynb
 async def adisplay_stream(rs):
