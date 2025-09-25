@@ -18,7 +18,6 @@ from litellm.utils import function_to_dict, StreamingChoices, Delta
 from toolslm.funccall import mk_ns, call_func, call_func_async, get_schema
 from fastcore.utils import *
 from fastcore import imghdr
-from fastcore.xml import ToolCalls, ToolCall, Arguments, Result
 
 # %% ../nbs/00_core.ipynb
 def patch_litellm():
