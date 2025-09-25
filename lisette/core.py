@@ -4,10 +4,11 @@
 
 # %% auto 0
 __all__ = ['effort', 'patch_litellm', 'mk_msg', 'mk_msgs', 'stream_with_complete', 'lite_mk_func', 'cite_footnote',
-           'cite_footnotes', 'Chat', 'astream_with_complete', 'AsyncChat', 'aformat_stream', 'adisplay_stream']
+           'cite_footnotes', 'Chat', 'random_tool_id', 'mk_tc', 'mk_tc_result', 'mk_tc_results',
+           'astream_with_complete', 'AsyncChat', 'aformat_stream', 'adisplay_stream']
 
 # %% ../nbs/00_core.ipynb
-import asyncio, base64, json, litellm, mimetypes
+import asyncio, base64, json, litellm, mimetypes, random, string
 from typing import Optional
 from html import escape
 from IPython.display import Markdown
@@ -243,6 +244,31 @@ class Chat:
         if stream: return result_gen              # streaming
         elif return_all: return list(result_gen)  # toolloop behavior
         else: return last(result_gen)             # normal chat behavior
+
+# %% ../nbs/00_core.ipynb
+@patch
+def print_hist(self:Chat):
+    "Print each message on a different line"
+    for r in self.hist: print(r, end='\n\n')
+
+# %% ../nbs/00_core.ipynb
+def random_tool_id():
+    "Generate a random tool ID with 'toolu_' prefix"
+    random_part = ''.join(random.choices(string.ascii_letters + string.digits, k=25))
+    return f'toolu_{random_part}'
+
+# %% ../nbs/00_core.ipynb
+def mk_tc(func, idx=1, **kwargs):
+    args = json.dumps(kwargs)
+    if callable(func): func = func.__name__
+    id = random_tool_id()
+    return {'index': idx, 'function': {'arguments': args, 'name': func}, 'id': id, 'type': 'function'}
+
+# %% ../nbs/00_core.ipynb
+def mk_tc_result(tc, result): return {'tool_call_id': tc['id'], 'role': 'tool', 'name': tc['function']['name'], 'content': result}
+
+# %% ../nbs/00_core.ipynb
+def mk_tc_results(tcq, results): return [mk_tc_result(a,b) for a,b in zip(tcq.tool_calls, results)]
 
 # %% ../nbs/00_core.ipynb
 async def _alite_call_func(tc, ns, raise_on_err=True):
