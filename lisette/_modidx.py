@@ -51,5 +51,6 @@ d = { 'settings': { 'branch': 'main',
                               'lisette.core.mk_tc': ('core.html#mk_tc', 'lisette/core.py'),
                               'lisette.core.mk_tc_result': ('core.html#mk_tc_result', 'lisette/core.py'),
                               'lisette.core.mk_tc_results': ('core.html#mk_tc_results', 'lisette/core.py'),
+                              'lisette.core.patch_litellm': ('core.html#patch_litellm', 'lisette/core.py'),
                               'lisette.core.random_tool_id': ('core.html#random_tool_id', 'lisette/core.py'),
                               'lisette.core.stream_with_complete': ('core.html#stream_with_complete', 'lisette/core.py')}}}
