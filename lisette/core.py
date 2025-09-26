@@ -21,6 +21,8 @@ from fastcore import imghdr
 
 # %% ../nbs/00_core.ipynb
 def patch_litellm():
+    "Patch litellm.ModelResponseBase such that `id` and `created` are fixed."
+    from litellm.types.utils import ModelResponseBase
     @patch
     def __init__(self: ModelResponseBase, id=None, created=None, *args, **kwargs): 
         self._orig___init__(id='chatcmpl-xxx', created=1000000000, *args, **kwargs)
