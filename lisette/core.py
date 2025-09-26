@@ -4,7 +4,7 @@
 
 # %% auto 0
 __all__ = ['effort', 'patch_litellm', 'mk_msg', 'mk_msgs', 'stream_with_complete', 'lite_mk_func', 'cite_footnote',
-           'cite_footnotes', 'Chat', 'random_tool_id', 'mk_tc', 'mk_tc_result', 'mk_tc_results',
+           'cite_footnotes', 'Chat', 'random_tool_id', 'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results',
            'astream_with_complete', 'AsyncChat', 'aformat_stream', 'adisplay_stream']
 
 # %% ../nbs/00_core.ipynb
@@ -263,6 +263,12 @@ def mk_tc(func, idx=1, **kwargs):
     if callable(func): func = func.__name__
     id = random_tool_id()
     return {'index': idx, 'function': {'arguments': args, 'name': func}, 'id': id, 'type': 'function'}
+
+# %% ../nbs/00_core.ipynb
+def mk_tc_req(content, tcs):
+    msg = Message(content=content, role='assistant', tool_calls=tcs, function_call=None)
+    msg.tool_calls = [{**dict(tc), 'function': dict(tc['function'])} for tc in msg.tool_calls]
+    return msg
 
 # %% ../nbs/00_core.ipynb
 def mk_tc_result(tc, result): return {'tool_call_id': tc['id'], 'role': 'tool', 'name': tc['function']['name'], 'content': result}
