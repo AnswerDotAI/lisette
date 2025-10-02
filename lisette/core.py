@@ -5,7 +5,7 @@
 # %% auto 0
 __all__ = ['sonn45', 'effort', 'patch_litellm', 'mk_msg', 'mk_msgs', 'stream_with_complete', 'lite_mk_func', 'cite_footnote',
            'cite_footnotes', 'Chat', 'random_tool_id', 'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results',
-           'astream_with_complete', 'AsyncChat', 'aformat_stream', 'adisplay_stream']
+           'astream_with_complete', 'AsyncChat', 'aformat_stream', 'mk_stream_formatter', 'adisplay_stream']
 
 # %% ../nbs/00_core.ipynb
 import asyncio, base64, json, litellm, mimetypes, random, string
@@ -404,9 +404,48 @@ async def aformat_stream(rs):
                 tool_count = 0
 
 # %% ../nbs/00_core.ipynb
+def _fmt_thinking(o):
+    return ('🧠',True) if nested_idx(o.choices[0].delta, 'reasoning_content') else ('', False)
+
+def _fmt_tool_call(o):
+    if not (c := getattr(o.choices[0].message, 'tool_calls', None)): return None
+    calls = '\n'.join([f" `{tc.function.name}({_trunc_str(tc.function.arguments)})`" for tc in c])
+    return f"\n<details class='tool-usage-details'>\n\n{calls}\n"
+
+def _fmt_tool_result(o):
+    if not isinstance(o, dict) or 'tool_call_id' not in o: return None
+    return f"  - `{_trunc_str(_clean_str(o.get('content')))}`\n"
+
+def _is_thinking(o): return nested_idx(o, 'choices', 0, 'delta', 'reasoning_content')
+
+def _content(o): return nested_idx(o, 'choices', 0, 'delta', 'content')
+
+def _fmt_tool(o):
+    if isinstance(o, ModelResponse): return _fmt_tool_call(o)
+    return _fmt_tool_result(o)
+
+def mk_stream_formatter():
+    "Create a stream formatter function with closure state"
+    th,n,i = False,0,0
+    
+    def fmt(o):
+        nonlocal th,n,i
+        if isinstance(o, ModelResponseStream):
+            if _is_thinking(o): th=True; return '🧠'
+            if th: th=False; return '\n\n'
+            return _content(o) or ''
+        if (res := _fmt_tool(o)): 
+            if isinstance(o, ModelResponse): n,i = len(o.choices[0].message.tool_calls),0
+            else: i+=1; res += "\n</details>\n\n" if i>=n else ""
+            return res
+        return ''
+    return fmt
+
+# %% ../nbs/00_core.ipynb
 async def adisplay_stream(rs):
     "Use IPython.display to markdown display the response stream."
     md = ''
     async for o in aformat_stream(rs): 
-        md+=o
+        md+=o if o else ''
         display(Markdown(md),clear=True)
+    return md
