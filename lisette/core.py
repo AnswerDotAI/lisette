@@ -369,24 +369,39 @@ def _trunc_str(s, mx=2000, replace="…"):
     return s[:mx]+replace if len(s)>mx else s
 
 # %% ../nbs/00_core.ipynb
+def _fmt_thinking(o):
+    return ('🧠',True) if nested_idx(o.choices[0].delta, 'reasoning_content') else ('', False)
+
+def _fmt_tool_call(o):
+    if not (c := getattr(o.choices[0].message, 'tool_calls', None)): return None
+    calls = '\n'.join([f" `{tc.function.name}({_trunc_str(tc.function.arguments)})`" for tc in c])
+    return f"\n<details class='tool-usage-details'>\n\n{calls}\n"
+
+def _fmt_tool_result(o):
+    if not isinstance(o, dict) or 'tool_call_id' not in o: return None
+    return f"  - `{_trunc_str(_clean_str(o.get('content')))}`\n"
+
 async def aformat_stream(rs):
     "Format the response stream for markdown display."
-    think = False
+    think,tool_count,tool_idx = False,0,0
     async for o in rs:
         if isinstance(o, ModelResponseStream):
-            d = o.choices[0].delta
-            if nested_idx(d, 'reasoning_content'): 
-                think = True
-                yield '🧠'
-            elif think:
-                think = False
-                yield '\n\n'
-            if c := d.content: yield c
-        elif isinstance(o, ModelResponse) and (c := getattr(o.choices[0].message, 'tool_calls', None)):
-            fn = first(c).function
-            yield f"\n<details class='tool-usage-details'>\n\n `{fn.name}({_trunc_str(fn.arguments)})`\n"
-        elif isinstance(o, dict) and 'tool_call_id' in o: 
-            yield f"  - `{_trunc_str(_clean_str(o.get('content')))}`\n\n</details>\n\n"
+            txt,is_think = _fmt_thinking(o)
+            if is_think: think = True
+            elif think: txt,think = '\n\n',False
+            if txt: yield txt
+            if c := o.choices[0].delta.content: yield c
+        elif isinstance(o, ModelResponse):
+            if res := _fmt_tool_call(o):
+                tool_count = len(o.choices[0].message.tool_calls)
+                tool_idx = 0
+                yield res
+        elif res := _fmt_tool_result(o):
+            yield res
+            tool_idx += 1
+            if tool_idx >= tool_count: 
+                yield "\n</details>\n\n"
+                tool_count = 0
 
 # %% ../nbs/00_core.ipynb
 async def adisplay_stream(rs):
