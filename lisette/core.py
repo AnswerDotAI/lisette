@@ -121,7 +121,7 @@ def mk_msg(content,      # Content: str, bytes (image), list of mixed content, o
 
 # %% ../nbs/00_core.ipynb
 def mk_msgs(msgs,                       # List of messages (each: str, bytes, list, or dict w 'role' and 'content' fields)
-            cache=False,                # Enable Anthropic caching
+            cache=True,                # Enable Anthropic caching
             ttl=None,                   # Cache TTL: '5m' (default) or '1h'
             cache_last_ckpt_only=True   # Only cache the last message
            ):
@@ -133,7 +133,8 @@ def mk_msgs(msgs,                       # List of messages (each: str, bytes, li
         res.append(msg:=mk_msg(m, role=role,cache=cache))
         role = 'assistant' if msg['role'] in ('user','function', 'tool') else 'user'
     if cache_last_ckpt_only: res = [_remove_cache_ckpts(m) for m in res]
-    if res and cache: res[-1] = _add_cache_control(res[-1], cache=cache, ttl=ttl)
+    if res and cache: 
+        for i in range(1,3): res[-i] = _add_cache_control(res[-i], cache=True, ttl=ttl)
     return res
 
 # %% ../nbs/00_core.ipynb
@@ -198,7 +199,7 @@ class Chat:
     ):
         "LiteLLM chat client."
         self.model = model
-        hist,tools = mk_msgs(hist),listify(tools)
+        hist,tools = mk_msgs(hist, cache_last_ckpt_only=True),listify(tools)
         if ns is None and tools: ns = mk_ns(tools)
         elif ns is None: ns = globals()
         self.tool_schemas = [lite_mk_func(t) for t in tools] if tools else None
@@ -207,7 +208,7 @@ class Chat:
     def _prep_msg(self, msg=None, prefill=None):
         "Prepare the messages list for the API call"
         sp = [{"role": "system", "content": self.sp}] if self.sp else []
-        if msg: self.hist = mk_msgs(self.hist+[msg], cache=self.cache)
+        if msg: self.hist = mk_msgs(self.hist+[msg], cache=self.cache, cache_last_ckpt_only=True)
         pf = [{"role":"assistant","content":prefill}] if prefill else []
         return sp + self.hist + pf
 
@@ -383,8 +384,8 @@ async def aformat_stream(rs):
                 yield '\n\n'
             if c := d.content: yield c
         elif isinstance(o, ModelResponse) and (c := getattr(o.choices[0].message, 'tool_calls', None)):
-            fn = first(c).function
-            yield f"\n<details class='tool-usage-details'>\n\n `{fn.name}({_trunc_str(fn.arguments)})`\n"
+                fn = first(c).function
+                yield f"\n<details class='tool-usage-details'>\n\n `{fn.name}({_trunc_str(fn.arguments)})`\n"
         elif isinstance(o, dict) and 'tool_call_id' in o: 
             yield f"  - `{_trunc_str(_clean_str(o.get('content')))}`\n\n</details>\n\n"
 
