@@ -121,30 +121,20 @@ def mk_msg(content,      # Content: str, bytes (image), list of mixed content, o
     return _add_cache_control(msg, ttl=ttl) if cache else msg
 
 # %% ../nbs/00_core.ipynb
-def _keep_last_n_cache(msgs, n=1):
-    "Keep last n cache control"
-    new_msgs = []
-    for m in msgs[::-1]:
-        if _has_cache(m) and n > 0: n -= 1
-        else: m = _remove_cache_ckpts(m)
-        new_msgs.insert(0,m)
-    return new_msgs
-
-# %% ../nbs/00_core.ipynb
 def mk_msgs(msgs,                      # List of messages (each: str, bytes, list, or dict w 'role' and 'content' fields)
             cache=False,               # Enable Anthropic caching
             ttl=None,                  # Cache TTL: '5m' (default) or '1h'
-            cache_last_n=4,            # Cache last n msgs
-            cache_role=None,           # Role to cache
            ):
     "Create a list of LiteLLM compatible messages."
     if not msgs: return []
     if not isinstance(msgs, list): msgs = [msgs]
     res,role = [],'user'
     for m in msgs:
-        res.append(msg:=mk_msg(m, role=role, cache=cache and (cache_role is None or cache_role==role), ttl=ttl))
+        res.append(msg:=mk_msg(m, role=role))
         role = 'assistant' if msg['role'] in ('user','function', 'tool') else 'user'
-    if cache and cache_last_n: res = _keep_last_n_cache(res, cache_last_n)
+    if cache:
+        res[-1] = _add_cache_control(res[-1], ttl)
+        res[-2] = _add_cache_control(res[-2], ttl)
     return res
 
 # %% ../nbs/00_core.ipynb
@@ -207,12 +197,10 @@ class Chat:
         ns:Optional[dict]=None,   # Custom namespace for tool calling 
         cache=False,              # Anthropic prompt caching
         ttl=None,                 # Anthropic prompt caching ttl
-        cache_last_n=4,           # Last cache ckpts too keep (default. max 4)
-        cache_role=None           # Role to cache
     ):
         "LiteLLM chat client."
         self.model = model
-        hist,tools = mk_msgs(hist,cache,ttl,cache_last_n,cache_role),listify(tools)
+        hist,tools = mk_msgs(hist,cache,ttl),listify(tools)
         if ns is None and tools: ns = mk_ns(tools)
         elif ns is None: ns = globals()
         self.tool_schemas = [lite_mk_func(t) for t in tools] if tools else None
@@ -221,7 +209,7 @@ class Chat:
     def _prep_msg(self, msg=None, prefill=None):
         "Prepare the messages list for the API call"
         sp = [{"role": "system", "content": self.sp}] if self.sp else []
-        if msg: self.hist = mk_msgs(self.hist+[msg], self.cache, self.ttl, self.cache_last_n, self.cache_role)
+        if msg: self.hist = mk_msgs(self.hist+[msg], self.cache, self.ttl)
         pf = [{"role":"assistant","content":prefill}] if prefill else []
         return sp + self.hist + pf
 
@@ -397,8 +385,7 @@ async def aformat_stream(rs, include_usage=False):
                 yield '\n\n'
             if c := d.content: yield c
         elif isinstance(o, ModelResponse):
-            if include_usage:
-                yield f"\nUsage: {o.usage}"
+            if include_usage: yield f"\nUsage: {o.usage}"
             if (c := getattr(o.choices[0].message, 'tool_calls', None)):
                 fn = first(c).function
                 yield f"\n<details class='tool-usage-details'>\n\n `{fn.name}({_trunc_str(fn.arguments)})`\n"
