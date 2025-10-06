@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.5
+
+### Bugs Squashed
+
+- Fix cache control ([#23](https://github.com/AnswerDotAI/lisette/pull/23)), thanks to [@KeremTurgutlu](https://github.com/KeremTurgutlu)
+
+
 ## 0.0.4
 
 ### New Features
