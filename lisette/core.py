@@ -162,7 +162,7 @@ def _lite_call_func(tc,ns,raise_on_err=True):
 # %% ../nbs/00_core.ipynb
 def _has_search(m):
     i = get_model_info(m)
-    return bool(i['search_context_cost_per_query'] or i['supports_web_search'])
+    return bool(i.get('search_context_cost_per_query') or i.get('supports_web_search'))
 
 # %% ../nbs/00_core.ipynb
 def cite_footnote(msg):
@@ -216,7 +216,7 @@ class Chat:
     def _call(self, msg=None, prefill=None, temp=None, think=None, search=None, stream=False, max_steps=2, step=1, final_prompt=None, tool_choice=None, **kwargs):
         "Internal method that always yields responses"
         if step>max_steps: return
-        if not get_model_info(self.model)["supports_assistant_prefill"]: prefill=None
+        if not get_model_info(self.model).get("supports_assistant_prefill"): prefill=None
         if _has_search(self.model) and (s:=ifnone(search,self.search)): kwargs['web_search_options'] = {"search_context_size": effort[s]}
         else: _=kwargs.pop('web_search_options',None)
         res = completion(model=self.model, messages=self._prep_msg(msg, prefill), stream=stream, 
@@ -311,7 +311,7 @@ async def astream_with_complete(self, agen, postproc=noop):
 class AsyncChat(Chat):
     async def _call(self, msg=None, prefill=None, temp=None, think=None, search=None, stream=False, max_steps=2, step=1, final_prompt=None, tool_choice=None, **kwargs):
         if step>max_steps+1: return
-        if not get_model_info(self.model)["supports_assistant_prefill"]: prefill=None
+        if not get_model_info(self.model).get("supports_assistant_prefill"): prefill=None
         if _has_search(self.model) and (s:=ifnone(search,self.search)): kwargs['web_search_options'] = {"search_context_size": effort[s]}
         else: _=kwargs.pop('web_search_options',None)
         res = await acompletion(model=self.model, messages=self._prep_msg(msg, prefill), stream=stream,
