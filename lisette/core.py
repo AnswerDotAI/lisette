@@ -72,16 +72,13 @@ register_model({
 sonn45 = "claude-sonnet-4-5"
 
 # %% ../nbs/00_core.ipynb
-def _mk_img(data:bytes)->tuple:
-    "Convert image bytes to a base64 encoded image"
-    img = base64.b64encode(data).decode("utf-8")
-    mtype = mimetypes.types_map["."+imghdr.what(None, h=data)]
-    return img, mtype
+def _bytes2content(data):
+    "Convert bytes to litellm content dict (image or pdf)"
+    mtype = 'application/pdf' if data[:4] == b'%PDF' else mimetypes.types_map.get(f'.{imghdr.what(None, h=data)}')
+    if not mtype: raise ValueError(f'Data must be image or PDF bytes, got {data[:10]}')
+    return {'type': 'image_url', 'image_url': f'data:{mtype};base64,{base64.b64encode(data).decode("utf-8")}'}
 
 # %% ../nbs/00_core.ipynb
-def _is_img(data): 
-    return isinstance(data, bytes) and bool(imghdr.what(None, data))
-
 def _add_cache_control(msg,          # LiteLLM formatted msg
                        ttl=None):    # Cache TTL: '5m' (default) or '1h'
     "cache `msg` with default time-to-live (ttl) of 5minutes ('5m'), but can be set to '1h'."
@@ -103,9 +100,7 @@ def _remove_cache_ckpts(msg):
 
 def _mk_content(o):
     if isinstance(o, str): return {'type':'text','text':o.strip() or '.'}
-    if _is_img(o): 
-        img, mtype = _mk_img(o)
-        return {"type": "image_url", "image_url": f"data:{mtype};base64,{img}"}
+    elif isinstance(o,bytes): return _bytes2content(o)
     return o
 
 def mk_msg(content,      # Content: str, bytes (image), list of mixed content, or dict w 'role' and 'content' fields

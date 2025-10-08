@@ -3,7 +3,7 @@ project:
 
 website:
   title: "lisette"
-  site-url: "https://AnswerDotAI.github.io/lisette"
+  site-url: "https://lisette.answer.ai/"
   description: "litellm helper"
   repo-branch: main
   repo-url: "https://github.com/AnswerDotAI/lisette"
