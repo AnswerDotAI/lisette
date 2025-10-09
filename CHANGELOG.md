@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.6
+
+### New Features
+
+- Add pdf support ([#25](https://github.com/AnswerDotAI/lisette/pull/25)), thanks to [@RensDimmendaal](https://github.com/RensDimmendaal)
+
+
 ## 0.0.5
 
 ### Bugs Squashed
