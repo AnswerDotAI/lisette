@@ -20,7 +20,7 @@ from fastcore.utils import *
 from fastcore import imghdr
 
 # %% ../nbs/00_core.ipynb
-def patch_litellm():
+def patch_litellm(seed=0):
     "Patch litellm.ModelResponseBase such that `id` and `created` are fixed."
     from litellm.types.utils import ModelResponseBase
     @patch
@@ -32,6 +32,8 @@ def patch_litellm():
         if name == 'id': value = 'chatcmpl-xxx'
         elif name == 'created': value = 1000000000
         self._orig___setattr__(name, value)
+
+    if seed is not None: random.seed(seed) # ensures random ids like tool call ids are deterministic
 
 # %% ../nbs/00_core.ipynb
 @patch
