@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.7
+
+### New Features
+
+- make tool call ids deterministic ([#27](https://github.com/AnswerDotAI/lisette/pull/27)), thanks to [@comhar](https://github.com/comhar)
+
+
 ## 0.0.6
 
 ### New Features
