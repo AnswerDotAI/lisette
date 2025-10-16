@@ -394,7 +394,7 @@ def mk_tr_details(tr, tc):
     res = {'id': tr['tool_call_id']}
     res['call'] = {'function': tc.function.name, 'arguments': json.loads(tc.function.arguments)}
     res['result'] = _trunc_str(tr.get('content'))
-    return f"\n{detls_tag}\n```json\n\n{dumps(res, indent=2)}\n\n```\n\n</details>\n"
+    return f"\n{detls_tag}\n\n```json\n\n{dumps(res, indent=2)}\n\n```\n\n</details>\n"
 
 # %% ../nbs/00_core.ipynb
 class AsyncStreamFormatter:
