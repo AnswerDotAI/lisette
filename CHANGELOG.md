@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.8
+
+### New Features
+
+- reconstruct tool calls ([#30](https://github.com/AnswerDotAI/lisette/pull/30)), thanks to [@comhar](https://github.com/comhar)
+
+
 ## 0.0.7
 
 ### New Features
