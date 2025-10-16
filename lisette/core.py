@@ -386,11 +386,11 @@ def _trunc_str(s, mx=2000, replace="<TRUNCATED>"):
     return s[:mx]+replace if len(s)>mx else s
 
 # %% ../nbs/00_core.ipynb
-# TODO: truncate long args
 def mk_tr_details(tr, tc):
     "Create <details> block for tool call as JSON"
+    args = {k:_trunc_str(v) for k,v in json.loads(tc.function.arguments).items()}
     res = {'id':tr['tool_call_id'], 
-           'call':{'function': tc.function.name, 'arguments': json.loads(tc.function.arguments)},
+           'call':{'function': tc.function.name, 'arguments': args},
            'result':_trunc_str(tr.get('content')),}
     return f"\n\n{detls_tag}\n\n```json\n{dumps(res, indent=2)}\n```\n\n</details>\n\n"
 
