@@ -388,18 +388,18 @@ def _trunc_str(s, mx=2000, replace="<TRUNCATED>"):
     return s[:mx]+replace if len(s)>mx else s
 
 # %% ../nbs/00_core.ipynb
-def mk_tr_details(tr, tc):
+def mk_tr_details(tr, tc, mx=2000):
     "Create <details> block for tool call as JSON"
-    args = {k:_trunc_str(v) for k,v in json.loads(tc.function.arguments).items()}
+    args = {k:_trunc_str(v, mx=mx) for k,v in json.loads(tc.function.arguments).items()}
     res = {'id':tr['tool_call_id'], 
            'call':{'function': tc.function.name, 'arguments': args},
-           'result':_trunc_str(tr.get('content')),}
+           'result':_trunc_str(tr.get('content'), mx=mx),}
     return f"\n\n{detls_tag}\n\n```json\n{dumps(res, indent=2)}\n```\n\n</details>\n\n"
 
 # %% ../nbs/00_core.ipynb
 class AsyncStreamFormatter:
-    def __init__(self, include_usage=False):
-        self.outp,self.tcs,self.include_usage,self.think = '',{},include_usage,False
+    def __init__(self, include_usage=False, mx=2000):
+        self.outp,self.tcs,self.include_usage,self.think,self.mx = '',{},include_usage,False,mx
     
     def format_item(self, o):
         "Format a single item from the response stream."
@@ -418,7 +418,7 @@ class AsyncStreamFormatter:
             if c:=getattr(o.choices[0].message,'tool_calls',None):
                 self.tcs = {tc.id:tc for tc in c}
         elif isinstance(o, dict) and 'tool_call_id' in o:
-            res += mk_tr_details(o, self.tcs.pop(o['tool_call_id']))
+            res += mk_tr_details(o, self.tcs.pop(o['tool_call_id']), mx=self.mx)
         self.outp+=res
         return res
     
