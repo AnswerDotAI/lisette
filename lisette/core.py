@@ -126,15 +126,17 @@ re_tools = re.compile(fr"^({detls_tag}\n+```json\n+(.*?)\n+```\n+</details>)", f
 def _extract_tool(text:str)->tuple[dict,dict]:
     "Extract tool call and results from <details> block"
     d = json.loads(text.strip())
-    tc = ChatCompletionMessageToolCall(Function(dumps(d['call']['arguments']),d['call']['function']), d['id'],type='function')
-    tr = {'role': 'tool','tool_call_id': d['id'],'name': d['call']['function'], 'content': d['result']}
+    call = d['call']
+    func = call['function']
+    tc = ChatCompletionMessageToolCall(Function(dumps(call['arguments']),func), d['id'])
+    tr = {'role': 'tool','tool_call_id': d['id'],'name': func, 'content': d['result']}
     return tc,tr
 
 def fmt2hist(outp:str)->list:
     "Transform a formatted output into a LiteLLM compatible history"
     lm,hist = Message(),[]
     spt = re_tools.split(outp)
-    for txt,_,tooljson in list(chunked(spt, 3, pad=True)):
+    for txt,_,tooljson in chunked(spt, 3, pad=True):
         if txt.strip(): hist.append(lm:=Message(txt.strip()))
         if tooljson:
             tcr = _extract_tool(tooljson)
