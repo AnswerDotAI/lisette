@@ -108,15 +108,13 @@ def _mk_content(o):
 
 def mk_msg(content,      # Content: str, bytes (image), list of mixed content, or dict w 'role' and 'content' fields
            role="user",  # Message role if content isn't already a dict/Message
-           cache=False,  # Enable Anthropic caching
-           ttl=None):    # Cache TTL: '5m' (default) or '1h'
+           ):    
     "Create a LiteLLM compatible message."
     if isinstance(content, dict) or isinstance(content, Message): return content
     if isinstance(content, list) and len(content) == 1 and isinstance(content[0], str): c = content[0]
     elif isinstance(content, list): c = [_mk_content(o) for o in content]
     else: c = content
-    msg = {"role": role, "content": c}
-    return _add_cache_control(msg, ttl=ttl) if cache else msg
+    return {"role": role, "content": c}
 
 # %% ../nbs/00_core.ipynb
 detls_tag = "<details class='tool-usage-details'>"
@@ -157,7 +155,7 @@ def mk_msgs(msgs,                   # List of messages (each: str, bytes, list, 
     res,role = [],'user'
     msgs = L(msgs).map(lambda m: fmt2hist(m) if detls_tag in m else [m]).concat()
     for m in msgs:
-        res.append(msg:=mk_msg(m, role=role))
+        res.append(msg:=_remove_cache_ckpts(mk_msg(m, role=role)))
         role = 'assistant' if msg['role'] in ('user','function', 'tool') else 'user'
     if cache:
         res[-1] = _add_cache_control(res[-1], ttl)
