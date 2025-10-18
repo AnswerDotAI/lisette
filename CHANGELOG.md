@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.11
+
+### Bugs Squashed
+
+- Tool call serialization fails if no final text ([#33](https://github.com/AnswerDotAI/lisette/issues/33))
+
+
 ## 0.0.10
 
 ### New Features
