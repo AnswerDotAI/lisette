@@ -137,7 +137,8 @@ def fmt2hist(outp:str)->list:
     lm,hist = Message(),[]
     spt = re_tools.split(outp)
     for txt,_,tooljson in chunked(spt, 3, pad=True):
-        if txt.strip(): hist.append(lm:=Message(txt.strip()))
+        txt = txt.strip() if tooljson or txt.strip() else '.'
+        hist.append(lm:=Message(txt))
         if tooljson:
             tcr = _extract_tool(tooljson)
             if not hist: hist.append(lm) # if LLM calls a tool without talking
