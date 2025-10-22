@@ -155,7 +155,9 @@ def _skip_tools_cache(msgs, cache_idxs):
     "Skip tool use blocks and tool results in and shift cache indices"
     res = []
     for idx in cache_idxs:
-        while msgs[idx].get('tool_calls', []) or msgs[idx]['role'] == 'tool': idx -= 1
+        try: 
+            while msgs[idx].get('tool_calls', []) or msgs[idx]['role'] == 'tool': idx -= 1
+        except IndexError: continue
         res.append(idx)
     return res
 
@@ -236,7 +238,7 @@ class Chat:
         hist:list=None,           # Chat history
         ns:Optional[dict]=None,   # Custom namespace for tool calling 
         cache=False,              # Anthropic prompt caching
-        cache_idxs:list=[-1],     # Anthropic cache breakpoint idxs excl. sys prompt incl. final prompt
+        cache_idxs:list=[-1],     # Anthropic cache breakpoint idxs, use `0` for sys prompt if provided
         ttl=None,                 # Anthropic prompt caching ttl
     ):
         "LiteLLM chat client."
@@ -250,7 +252,12 @@ class Chat:
     def _prep_msg(self, msg=None, prefill=None):
         "Prepare the messages list for the API call"
         sp = [{"role": "system", "content": self.sp}] if self.sp else []
-        if msg: self.hist = mk_msgs(self.hist+[msg], self.cache, self.cache_idxs, self.ttl)
+        if sp:
+            if 0 in self.cache_idxs: sp[0] = _add_cache_control(sp[0])
+            cache_idxs = L(self.cache_idxs).filter().map(lambda o: o-1 if o>0 else o)
+        else:
+            cache_idxs = self.cache_idxs
+        if msg: self.hist = mk_msgs(self.hist+[msg], self.cache, cache_idxs, self.ttl)
         pf = [{"role":"assistant","content":prefill}] if prefill else []
         return sp + self.hist + pf
 
