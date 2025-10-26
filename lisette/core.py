@@ -12,7 +12,6 @@ __all__ = ['sonn45', 'detls_tag', 're_tools', 'effort', 'patch_litellm', 'remove
 import asyncio, base64, json, litellm, mimetypes, random, string
 from typing import Optional
 from html import escape
-from IPython.display import Markdown
 from litellm import (acompletion, completion, stream_chunk_builder, Message,
                      ModelResponse, ModelResponseStream, get_model_info, register_model, Usage)
 from litellm.utils import function_to_dict, StreamingChoices, Delta, ChatCompletionMessageToolCall, Function, Choices
@@ -453,6 +452,8 @@ class AsyncStreamFormatter:
 # %% ../nbs/00_core.ipynb
 async def adisplay_stream(rs):
     "Use IPython.display to markdown display the response stream."
+    try: from IPython.display import display, Markdown
+    except ModuleNotFoundError: raise ModuleNotFoundError("This function requires ipython. Please run `pip install ipython` to use.")
     fmt = AsyncStreamFormatter()
     md = ''
     async for o in fmt.format_stream(rs): 
