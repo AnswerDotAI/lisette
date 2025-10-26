@@ -151,9 +151,21 @@ def fmt2hist(outp:str)->list:
     return hist
 
 # %% ../nbs/00_core.ipynb
+def _skip_tools_cache(msgs, cache_idxs):
+    "Skip tool use blocks and tool results in and shift cache indices"
+    res = []
+    for idx in cache_idxs:
+        try: 
+            while msgs[idx].get('tool_calls', []) or msgs[idx]['role'] == 'tool': idx -= 1
+        except IndexError: continue
+        res.append(idx)
+    return res
+
+# %% ../nbs/00_core.ipynb
 def mk_msgs(
     msgs,                   # List of messages (each: str, bytes, list, or dict w 'role' and 'content' fields)
     cache=False,            # Enable Anthropic caching
+    cache_idxs=[-1],        # Cache breakpoint idxs
     ttl=None,               # Cache TTL: '5m' (default) or '1h'
 ):
     "Create a list of LiteLLM compatible messages."
@@ -164,9 +176,7 @@ def mk_msgs(
     for m in msgs:
         res.append(msg:=remove_cache_ckpts(mk_msg(m, role=role)))
         role = 'assistant' if msg['role'] in ('user','function', 'tool') else 'user'
-    if cache:
-        res[-1] = _add_cache_control(res[-1], ttl)
-        res[-2] = _add_cache_control(res[-2], ttl)
+    if cache: L(_skip_tools_cache(res, cache_idxs)).map(lambda idx: _add_cache_control(res[idx], ttl))
     return res
 
 # %% ../nbs/00_core.ipynb
@@ -228,11 +238,12 @@ class Chat:
         hist:list=None,           # Chat history
         ns:Optional[dict]=None,   # Custom namespace for tool calling 
         cache=False,              # Anthropic prompt caching
+        cache_idxs:list=[-1],     # Anthropic cache breakpoint idxs, use `0` for sys prompt if provided
         ttl=None,                 # Anthropic prompt caching ttl
     ):
         "LiteLLM chat client."
         self.model = model
-        hist,tools = mk_msgs(hist,cache,ttl),listify(tools)
+        hist,tools = mk_msgs(hist,cache,cache_idxs,ttl),listify(tools)
         if ns is None and tools: ns = mk_ns(tools)
         elif ns is None: ns = globals()
         self.tool_schemas = [lite_mk_func(t) for t in tools] if tools else None
@@ -241,7 +252,12 @@ class Chat:
     def _prep_msg(self, msg=None, prefill=None):
         "Prepare the messages list for the API call"
         sp = [{"role": "system", "content": self.sp}] if self.sp else []
-        if msg: self.hist = mk_msgs(self.hist+[msg], self.cache, self.ttl)
+        if sp:
+            if 0 in self.cache_idxs: sp[0] = _add_cache_control(sp[0])
+            cache_idxs = L(self.cache_idxs).filter().map(lambda o: o-1 if o>0 else o)
+        else:
+            cache_idxs = self.cache_idxs
+        if msg: self.hist = mk_msgs(self.hist+[msg], self.cache, cache_idxs, self.ttl)
         pf = [{"role":"assistant","content":prefill}] if prefill else []
         return sp + self.hist + pf
 
