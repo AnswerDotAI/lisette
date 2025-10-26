@@ -2,6 +2,17 @@
 
 <!-- do not remove -->
 
+## 0.0.12
+
+### New Features
+
+- Custom anthropic `cache_idxs` ([#36](https://github.com/AnswerDotAI/lisette/pull/36)), thanks to [@KeremTurgutlu](https://github.com/KeremTurgutlu)
+
+### Bugs Squashed
+
+- Toolloop: `A maximum of 4 blocks with cache_control may be provided. Found 5.` ([#34](https://github.com/AnswerDotAI/lisette/issues/34))
+
+
 ## 0.0.11
 
 ### Bugs Squashed
