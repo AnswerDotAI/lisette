@@ -150,15 +150,12 @@ def fmt2hist(outp:str)->list:
     return hist
 
 # %% ../nbs/00_core.ipynb
-def _skip_tools_cache(msgs, cache_idxs):
-    "Skip tool use blocks and tool results in and shift cache indices"
-    res = []
-    for idx in cache_idxs:
-        try: 
-            while msgs[idx].get('tool_calls', []) or msgs[idx]['role'] == 'tool': idx -= 1
+def _apply_cache_idxs(msgs, cache_idxs=[-1], ttl=None):
+    'Add cache control to idxs after filtering tools'
+    ms = L(msgs).filter(lambda m: not (m.get('tool_calls', []) or m['role'] == 'tool'))
+    for i in cache_idxs:
+        try: _add_cache_control(ms[i], ttl)
         except IndexError: continue
-        res.append(idx)
-    return res
 
 # %% ../nbs/00_core.ipynb
 def mk_msgs(
@@ -175,7 +172,7 @@ def mk_msgs(
     for m in msgs:
         res.append(msg:=remove_cache_ckpts(mk_msg(m, role=role)))
         role = 'assistant' if msg['role'] in ('user','function', 'tool') else 'user'
-    if cache: L(_skip_tools_cache(res, cache_idxs)).map(lambda idx: _add_cache_control(res[idx], ttl))
+    if cache: _apply_cache_idxs(res, cache_idxs, ttl)
     return res
 
 # %% ../nbs/00_core.ipynb
