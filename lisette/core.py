@@ -4,9 +4,9 @@
 
 # %% auto 0
 __all__ = ['sonn45', 'detls_tag', 're_tools', 'effort', 'patch_litellm', 'remove_cache_ckpts', 'mk_msg', 'fmt2hist', 'mk_msgs',
-           'stream_with_complete', 'lite_mk_func', 'cite_footnote', 'cite_footnotes', 'Chat', 'random_tool_id', 'mk_tc',
-           'mk_tc_req', 'mk_tc_result', 'mk_tc_results', 'astream_with_complete', 'AsyncChat', 'mk_tr_details',
-           'AsyncStreamFormatter', 'adisplay_stream']
+           'stream_with_complete', 'lite_mk_func', 'ToolResponse', 'cite_footnote', 'cite_footnotes', 'Chat',
+           'random_tool_id', 'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results', 'astream_with_complete',
+           'AsyncChat', 'mk_tr_details', 'AsyncStreamFormatter', 'adisplay_stream']
 
 # %% ../nbs/00_core.ipynb
 import asyncio, base64, json, litellm, mimetypes, random, string
@@ -18,6 +18,7 @@ from litellm.utils import function_to_dict, StreamingChoices, Delta, ChatComplet
 from toolslm.funccall import mk_ns, call_func, call_func_async, get_schema
 from fastcore.utils import *
 from fastcore import imghdr
+from dataclasses import dataclass
 
 # %% ../nbs/00_core.ipynb
 def patch_litellm(seed=0):
@@ -191,11 +192,18 @@ def lite_mk_func(f):
     return {'type':'function', 'function':get_schema(f, pname='parameters')}
 
 # %% ../nbs/00_core.ipynb
+@dataclass
+class ToolResponse:
+    content: list[str,str]
+
+# %% ../nbs/00_core.ipynb
 def _lite_call_func(tc,ns,raise_on_err=True):
     try: fargs = json.loads(tc.function.arguments)
     except Exception as e: raise ValueError(f"Failed to parse function arguments: {tc.function.arguments}") from e
     res = call_func(tc.function.name, fargs,ns=ns)
-    return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": str(res)}
+    if isinstance(res, ToolResponse): res = res.content
+    else: res = str(res)
+    return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": res}
 
 # %% ../nbs/00_core.ipynb
 def _has_search(m):
@@ -337,7 +345,9 @@ async def _alite_call_func(tc, ns, raise_on_err=True):
     try: fargs = json.loads(tc.function.arguments)
     except Exception as e: raise ValueError(f"Failed to parse function arguments: {tc.function.arguments}") from e
     res = await call_func_async(tc.function.name, fargs, ns=ns)
-    return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": str(res)}
+    if isinstance(res, ToolResponse): res = res.content
+    else: res = str(res)
+    return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": res}
 
 # %% ../nbs/00_core.ipynb
 @asave_iter
