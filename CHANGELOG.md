@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.13
+
+### New Features
+
+- support toolcalls to return toolresponses ([#44](https://github.com/AnswerDotAI/lisette/pull/44)), thanks to [@ncoop57](https://github.com/ncoop57)
+
+
 ## 0.0.12
 
 ### New Features
