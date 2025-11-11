@@ -345,7 +345,9 @@ async def _alite_call_func(tc, ns, raise_on_err=True):
     try: fargs = json.loads(tc.function.arguments)
     except Exception as e: raise ValueError(f"Failed to parse function arguments: {tc.function.arguments}") from e
     res = await call_func_async(tc.function.name, fargs, ns=ns)
-    return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": str(res)}
+    if isinstance(res, ToolResponse): res = res.content
+    else: res = str(res)
+    return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": res}
 
 # %% ../nbs/00_core.ipynb
 @asave_iter
