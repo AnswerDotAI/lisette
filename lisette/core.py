@@ -270,7 +270,12 @@ class Chat:
     def _call(self, msg=None, prefill=None, temp=None, think=None, search=None, stream=False, max_steps=2, step=1, final_prompt=None, tool_choice=None, **kwargs):
         "Internal method that always yields responses"
         if step>max_steps: return
-        if not get_model_info(self.model).get("supports_assistant_prefill"): prefill=None
+        try:
+            model_info = get_model_info(self.model)
+        except Exception:
+            register_model({self.model: {}})
+            model_info = get_model_info(self.model)
+        if not model_info.get("supports_assistant_prefill"): prefill=None
         if _has_search(self.model) and (s:=ifnone(search,self.search)): kwargs['web_search_options'] = {"search_context_size": effort[s]}
         else: _=kwargs.pop('web_search_options',None)
         if self.api_base: kwargs['api_base'] = self.api_base
