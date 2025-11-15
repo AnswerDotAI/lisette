@@ -259,7 +259,7 @@ The result of 47 + 23 is 70.
 - model: `claude-sonnet-4-20250514`
 - finish_reason: `stop`
 - usage:
-  `Usage(completion_tokens=17, prompt_tokens=533, total_tokens=550, completion_tokens_details=None, prompt_tokens_details=PromptTokensDetailsWrapper(audio_tokens=None, cached_tokens=0, text_tokens=None, image_tokens=None), cache_creation_input_tokens=0, cache_read_input_tokens=0)`
+  `Usage(completion_tokens=18, prompt_tokens=573, total_tokens=591, completion_tokens_details=None, prompt_tokens_details=PromptTokensDetailsWrapper(audio_tokens=None, cached_tokens=0, text_tokens=None, image_tokens=None), cache_creation_input_tokens=0, cache_read_input_tokens=0)`
 
 </details>
 
@@ -312,7 +312,10 @@ Now I’ll add the result (70) to the third number (59):
      'name': 'add_numbers',
      'content': '129'}
 
-The answer is 129. So 47 + 23 + 59 = 129.
+The answer is **129**.
+
+I calculated this by first adding 47 + 23 = 70, then adding 70 + 59 =
+129.
 
 <details>
 
@@ -320,7 +323,7 @@ The answer is 129. So 47 + 23 + 59 = 129.
 - model: `claude-sonnet-4-20250514`
 - finish_reason: `stop`
 - usage:
-  `Usage(completion_tokens=25, prompt_tokens=662, total_tokens=687, completion_tokens_details=None, prompt_tokens_details=PromptTokensDetailsWrapper(audio_tokens=None, cached_tokens=0, text_tokens=None, image_tokens=None), cache_creation_input_tokens=0, cache_read_input_tokens=0)`
+  `Usage(completion_tokens=41, prompt_tokens=702, total_tokens=743, completion_tokens_details=None, prompt_tokens_details=PromptTokensDetailsWrapper(audio_tokens=None, cached_tokens=0, text_tokens=None, image_tokens=None), cache_creation_input_tokens=0, cache_read_input_tokens=0)`
 
 </details>
 
