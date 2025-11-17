@@ -244,6 +244,7 @@ class Chat:
         cache=False,              # Anthropic prompt caching
         cache_idxs:list=[-1],     # Anthropic cache breakpoint idxs, use `0` for sys prompt if provided
         ttl=None,                 # Anthropic prompt caching ttl
+        cached_content = None     # Gemini prompt caching
     ):
         "LiteLLM chat client."
         self.model = model
@@ -251,6 +252,7 @@ class Chat:
         if ns is None and tools: ns = mk_ns(tools)
         elif ns is None: ns = globals()
         self.tool_schemas = [lite_mk_func(t) for t in tools] if tools else None
+        self.cache_name = cached_content
         store_attr()
     
     def _prep_msg(self, msg=None, prefill=None):
