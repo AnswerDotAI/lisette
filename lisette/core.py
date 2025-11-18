@@ -273,6 +273,7 @@ class Chat:
         if not get_model_info(self.model).get("supports_assistant_prefill"): prefill=None
         if _has_search(self.model) and (s:=ifnone(search,self.search)): kwargs['web_search_options'] = {"search_context_size": effort[s]}
         else: _=kwargs.pop('web_search_options',None)
+        if self.cache_name: kwargs['cached_content'] = self.cache_name
         res = completion(model=self.model, messages=self._prep_msg(msg, prefill), stream=stream, 
                          tools=self.tool_schemas, reasoning_effort = effort.get(think), tool_choice=tool_choice,
                          # temperature is not supported when reasoning
@@ -469,3 +470,77 @@ async def adisplay_stream(rs):
         md+=o
         display(Markdown(md),clear=True)
     return fmt
+
+def create_cache(self, system_instruction=None, contents=None, tools=None, ttl="3600s"):
+    from google import genai
+    client = genai.Client()
+
+    # if model is "gemini/gemini-2.0-flash", extract "gemini-2.0-flash"
+    if "/" in self.model:
+        model_name = self.model.split("/")[1]
+    else:
+        model_name = self.model
+    
+    #check if model has `-001` suffix
+    if "-001" not in model_name:
+        model_name += "-001"
+    
+    # Check if cache already exists
+    if self.cache_name:
+        raise ValueError("Cache already exists. Delete it first with delete_cache()")
+    
+    # Use defaults from Chat if not provided
+    system_instruction = system_instruction or self.sp
+    tools = tools or self.tools_schema
+    
+    # Create cache using google.genai client
+    cache = client.caches.create(
+    model=model_name,
+    config = types.CreateCachedContentConfig(
+        system_instruction= system_instruction,
+        if contents:
+            contents = [contents],
+        tools = tools,
+        ttl=ttl
+    )
+    )
+    # Store cache.name in self.cache_name
+    self.cache_name = cache.name
+    # Return cache object
+    return cache
+
+
+def delete_cache(self):
+    from google import genai
+    
+    if not self.cache_name:
+        raise ValueError("No cache exists to delete.")
+    
+    client = genai.Client()
+    client.caches.delete(self.cache_name)
+    self.cache_name = None
+
+def get_cache(self):
+    from google import genai
+    
+    if not self.cache_name:
+        raise ValueError("No cache exists")
+    
+    client = genai.Client()
+    return client.caches.get(name=self.cache_name)
+
+def update_cache(self,ttl='300s'):
+    ## ttl needs to be in seconds in string format i.e., '300s'
+    from google import genai
+    from google.genai import types
+
+    if not self.cache_name:
+        raise ValueError("No cache exists to update")
+
+    client = genai.Client()
+    client.caches.update(
+        name = self.cache_name,
+        config  = types.UpdateCachedContentConfig(
+      ttl=ttl
+  )
+)
