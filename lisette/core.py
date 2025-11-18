@@ -313,7 +313,6 @@ class Chat:
         if stream: return result_gen              # streaming
         elif return_all: return list(result_gen)  # toolloop behavior
         else: return last(result_gen)             # normal chat behavior
-
     
     def create_cache(self, system_instruction=None, contents=None, tools=None, ttl="3600s"):
         from google import genai
@@ -336,7 +335,7 @@ class Chat:
         
         # Use defaults from Chat if not provided
         system_instruction = system_instruction or self.sp
-        tools = tools or self.tools_schema
+        tools = tools or self.tools_schemas
         
         if contents:
             contents = [contents]
