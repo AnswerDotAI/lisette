@@ -335,7 +335,7 @@ class Chat:
         
         # Use defaults from Chat if not provided
         system_instruction = system_instruction or self.sp
-        tools = tools or self.tools_schemas
+        tools = tools or self.tool_schemas
         
         if contents:
             contents = [contents]
