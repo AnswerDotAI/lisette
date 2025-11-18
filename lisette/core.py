@@ -257,7 +257,8 @@ class Chat:
     
     def _prep_msg(self, msg=None, prefill=None):
         "Prepare the messages list for the API call"
-        sp = [{"role": "system", "content": self.sp}] if self.sp else []
+        # Don't include sp if using cache (it's already in the cache)
+        sp = [{"role": "system", "content": self.sp}] if self.sp and not getattr(self, '_sp_in_cache', False) else []
         if sp:
             if 0 in self.cache_idxs: sp[0] = _add_cache_control(sp[0])
             cache_idxs = L(self.cache_idxs).filter().map(lambda o: o-1 if o>0 else o)
@@ -359,6 +360,10 @@ class Chat:
     )
         # Store cache.name in self.cache_name
         self.cache_name = cache.name
+        
+        # Set flag if system prompt is in cache
+        self._sp_in_cache = bool(system_instruction)
+
         # Return cache object
         return cache
 
