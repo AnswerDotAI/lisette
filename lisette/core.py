@@ -244,6 +244,8 @@ class Chat:
         cache=False,              # Anthropic prompt caching
         cache_idxs:list=[-1],     # Anthropic cache breakpoint idxs, use `0` for sys prompt if provided
         ttl=None,                 # Anthropic prompt caching ttl
+        api_base=None,            # API base URL for custom providers
+        api_key=None,             # API key for custom providers
     ):
         "LiteLLM chat client."
         self.model = model
@@ -268,9 +270,16 @@ class Chat:
     def _call(self, msg=None, prefill=None, temp=None, think=None, search=None, stream=False, max_steps=2, step=1, final_prompt=None, tool_choice=None, **kwargs):
         "Internal method that always yields responses"
         if step>max_steps: return
-        if not get_model_info(self.model).get("supports_assistant_prefill"): prefill=None
+        try:
+            model_info = get_model_info(self.model)
+        except Exception:
+            register_model({self.model: {}})
+            model_info = get_model_info(self.model)
+        if not model_info.get("supports_assistant_prefill"): prefill=None
         if _has_search(self.model) and (s:=ifnone(search,self.search)): kwargs['web_search_options'] = {"search_context_size": effort[s]}
         else: _=kwargs.pop('web_search_options',None)
+        if self.api_base: kwargs['api_base'] = self.api_base
+        if self.api_key: kwargs['api_key'] = self.api_key
         res = completion(model=self.model, messages=self._prep_msg(msg, prefill), stream=stream, 
                          tools=self.tool_schemas, reasoning_effort = effort.get(think), tool_choice=tool_choice,
                          # temperature is not supported when reasoning
