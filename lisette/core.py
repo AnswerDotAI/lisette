@@ -494,7 +494,7 @@ def create_cache(self, system_instruction=None, contents=None, tools=None, ttl="
     tools = tools or self.tools_schema
     
     if contents:
-    contents = [contents]
+        contents = [contents]
 
     # Create cache using google.genai client
     cache = client.caches.create(
