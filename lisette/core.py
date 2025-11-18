@@ -493,13 +493,15 @@ def create_cache(self, system_instruction=None, contents=None, tools=None, ttl="
     system_instruction = system_instruction or self.sp
     tools = tools or self.tools_schema
     
+    if contents:
+    contents = [contents]
+
     # Create cache using google.genai client
     cache = client.caches.create(
     model=model_name,
     config = types.CreateCachedContentConfig(
         system_instruction= system_instruction,
-        if contents:
-            contents = [contents],
+        contents = [contents],
         tools = tools,
         ttl=ttl
     )
@@ -529,18 +531,3 @@ def get_cache(self):
     client = genai.Client()
     return client.caches.get(name=self.cache_name)
 
-def update_cache(self,ttl='300s'):
-    ## ttl needs to be in seconds in string format i.e., '300s'
-    from google import genai
-    from google.genai import types
-
-    if not self.cache_name:
-        raise ValueError("No cache exists to update")
-
-    client = genai.Client()
-    client.caches.update(
-        name = self.cache_name,
-        config  = types.UpdateCachedContentConfig(
-      ttl=ttl
-  )
-)
