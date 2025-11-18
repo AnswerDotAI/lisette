@@ -317,6 +317,7 @@ class Chat:
     
     def create_cache(self, system_instruction=None, contents=None, tools=None, ttl="3600s"):
         from google import genai
+        from google.genai import types
         client = genai.Client()
 
         # if model is "gemini/gemini-2.0-flash", extract "gemini-2.0-flash"
@@ -375,7 +376,21 @@ class Chat:
         client = genai.Client()
         return client.caches.get(name=self.cache_name)
 
+    def update_cache(self,ttl='300s'):
+        ## ttl needs to be in seconds in string format i.e., '300s'
+        from google import genai
+        from google.genai import types
 
+        if not self.cache_name:
+            raise ValueError("No cache exists to update")
+
+        client = genai.Client()
+        client.caches.update(
+            name = self.cache_name,
+            config  = types.UpdateCachedContentConfig(
+        ttl=ttl
+    )
+)
 
 
 
