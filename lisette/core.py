@@ -375,7 +375,7 @@ class Chat:
             raise ValueError("No cache exists to delete.")
         
         client = genai.Client()
-        client.caches.delete(self.cache_name)
+        client.caches.delete(name=self.cache_name)
         self.cache_name = None
 
     def get_cache(self):
