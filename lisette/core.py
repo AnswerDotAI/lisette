@@ -314,6 +314,71 @@ class Chat:
         elif return_all: return list(result_gen)  # toolloop behavior
         else: return last(result_gen)             # normal chat behavior
 
+    
+    def create_cache(self, system_instruction=None, contents=None, tools=None, ttl="3600s"):
+        from google import genai
+        client = genai.Client()
+
+        # if model is "gemini/gemini-2.0-flash", extract "gemini-2.0-flash"
+        if "/" in self.model:
+            model_name = self.model.split("/")[1]
+        else:
+            model_name = self.model
+        
+        #check if model has `-001` suffix
+        if "-001" not in model_name:
+            model_name += "-001"
+        
+        # Check if cache already exists
+        if self.cache_name:
+            raise ValueError("Cache already exists. Delete it first with delete_cache()")
+        
+        # Use defaults from Chat if not provided
+        system_instruction = system_instruction or self.sp
+        tools = tools or self.tools_schema
+        
+        if contents:
+            contents = [contents]
+
+        # Create cache using google.genai client
+        cache = client.caches.create(
+        model=model_name,
+        config = types.CreateCachedContentConfig(
+            system_instruction= system_instruction,
+            contents = [contents],
+            tools = tools,
+            ttl=ttl
+        )
+        )
+        # Store cache.name in self.cache_name
+        self.cache_name = cache.name
+        # Return cache object
+        return cache
+
+
+    def delete_cache(self):
+        from google import genai
+        
+        if not self.cache_name:
+            raise ValueError("No cache exists to delete.")
+        
+        client = genai.Client()
+        client.caches.delete(self.cache_name)
+        self.cache_name = None
+
+    def get_cache(self):
+        from google import genai
+        
+        if not self.cache_name:
+            raise ValueError("No cache exists")
+        
+        client = genai.Client()
+        return client.caches.get(name=self.cache_name)
+
+
+
+
+
 # %% ../nbs/00_core.ipynb
 @patch
 def print_hist(self:Chat):
@@ -471,63 +536,4 @@ async def adisplay_stream(rs):
         display(Markdown(md),clear=True)
     return fmt
 
-def create_cache(self, system_instruction=None, contents=None, tools=None, ttl="3600s"):
-    from google import genai
-    client = genai.Client()
-
-    # if model is "gemini/gemini-2.0-flash", extract "gemini-2.0-flash"
-    if "/" in self.model:
-        model_name = self.model.split("/")[1]
-    else:
-        model_name = self.model
-    
-    #check if model has `-001` suffix
-    if "-001" not in model_name:
-        model_name += "-001"
-    
-    # Check if cache already exists
-    if self.cache_name:
-        raise ValueError("Cache already exists. Delete it first with delete_cache()")
-    
-    # Use defaults from Chat if not provided
-    system_instruction = system_instruction or self.sp
-    tools = tools or self.tools_schema
-    
-    if contents:
-        contents = [contents]
-
-    # Create cache using google.genai client
-    cache = client.caches.create(
-    model=model_name,
-    config = types.CreateCachedContentConfig(
-        system_instruction= system_instruction,
-        contents = [contents],
-        tools = tools,
-        ttl=ttl
-    )
-    )
-    # Store cache.name in self.cache_name
-    self.cache_name = cache.name
-    # Return cache object
-    return cache
-
-
-def delete_cache(self):
-    from google import genai
-    
-    if not self.cache_name:
-        raise ValueError("No cache exists to delete.")
-    
-    client = genai.Client()
-    client.caches.delete(self.cache_name)
-    self.cache_name = None
-
-def get_cache(self):
-    from google import genai
-    
-    if not self.cache_name:
-        raise ValueError("No cache exists")
-    
-    client = genai.Client()
-    return client.caches.get(name=self.cache_name)
 
