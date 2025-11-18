@@ -337,19 +337,26 @@ class Chat:
         system_instruction = system_instruction or self.sp
         tools = tools or self.tool_schemas
         
-        if contents:
-            contents = [contents]
-
         # Create cache using google.genai client
-        cache = client.caches.create(
-        model=model_name,
-        config = types.CreateCachedContentConfig(
-            system_instruction= system_instruction,
-            contents = [contents],
-            tools = tools,
-            ttl=ttl
+        if contents:
+            cache = client.caches.create(
+                model=model_name,
+                config=types.CreateCachedContentConfig(
+                    system_instruction=system_instruction,
+                    contents=contents,
+                    tools=tools,
+                    ttl=ttl
         )
-        )
+    )
+        else:
+            cache = client.caches.create(
+            model=model_name,
+            config=types.CreateCachedContentConfig(
+                system_instruction=system_instruction,
+                tools=tools,
+                ttl=ttl
+            )
+    )
         # Store cache.name in self.cache_name
         self.cache_name = cache.name
         # Return cache object
