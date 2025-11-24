@@ -2,6 +2,14 @@
 
 <!-- do not remove -->
 
+## 0.0.14
+
+### New Features
+
+- added contents helper ([#51](https://github.com/AnswerDotAI/lisette/pull/51)), thanks to [@bitcloud2](https://github.com/bitcloud2)
+- add sqlite usage and cost monitoring ([#47](https://github.com/AnswerDotAI/lisette/pull/47)), thanks to [@KeremTurgutlu](https://github.com/KeremTurgutlu)
+
+
 ## 0.0.13
 
 ### New Features
