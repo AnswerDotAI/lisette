@@ -75,11 +75,34 @@ register_model({
 sonn45 = "claude-sonnet-4-5"
 
 # %% ../nbs/00_core.ipynb
+_sigs = {
+    (b'%PDF', 0): 'application/pdf',
+    (b'RIFF', 0): lambda d: 'audio/wav' if d[8:12]==b'WAVE' else 'video/avi' if d[8:12]==b'AVI ' else None,
+    (b'ID3', 0): 'audio/mp3',
+    (b'\xff\xfb', 0): 'audio/mp3',
+    (b'\xff\xf3', 0): 'audio/mp3',
+    (b'FORM', 0): lambda d: 'audio/aiff' if d[8:12]==b'AIFF' else None,
+    (b'OggS', 0): 'audio/ogg',
+    (b'fLaC', 0): 'audio/flac',
+    (b'ftyp', 4): lambda d: 'video/3gpp' if d[8:11]==b'3gp' else 'video/mp4',
+    (b'\x1a\x45\xdf', 0): 'video/webm',
+    (b'FLV', 0): 'video/x-flv',
+    (b'\x30\x26\xb2\x75', 0): 'video/wmv',
+    (b'\x00\x00\x01\xb3', 0): 'video/mpeg',
+}
+
+def _detect_mime(data):
+    for (sig,pos),mime in _sigs.items():
+        if data[pos:pos+len(sig)]==sig: return mime(data) if callable(mime) else mime
+    return mimetypes.types_map.get(f'.{imghdr.what(None, h=data)}')
+    
 def _bytes2content(data):
-    "Convert bytes to litellm content dict (image or pdf)"
-    mtype = 'application/pdf' if data[:4] == b'%PDF' else mimetypes.types_map.get(f'.{imghdr.what(None, h=data)}')
-    if not mtype: raise ValueError(f'Data must be image or PDF bytes, got {data[:10]}')
-    return {'type': 'image_url', 'image_url': f'data:{mtype};base64,{base64.b64encode(data).decode("utf-8")}'}
+    "Convert bytes to litellm content dict (image, pdf, audio, video)"
+    mtype = _detect_mime(data)
+    if not mtype: raise ValueError(f'Data must be a supported file type, got {data[:10]}')
+    encoded = base64.b64encode(data).decode("utf-8")    
+    if mtype.startswith('image/'): return {'type': 'image_url', 'image_url': f'data:{mtype};base64,{encoded}'}
+    return {'type': 'file', 'file': {'file_data': f'data:{mtype};base64,{encoded}'}}
 
 # %% ../nbs/00_core.ipynb
 def _add_cache_control(msg,          # LiteLLM formatted msg
