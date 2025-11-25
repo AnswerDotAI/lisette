@@ -81,10 +81,12 @@ opus45 = "claude-opus-4-5"
 
 # %% ../nbs/00_core.ipynb
 def _bytes2content(data):
-    "Convert bytes to litellm content dict (image or pdf)"
-    mtype = 'application/pdf' if data[:4] == b'%PDF' else mimetypes.types_map.get(f'.{imghdr.what(None, h=data)}')
-    if not mtype: raise ValueError(f'Data must be image or PDF bytes, got {data[:10]}')
-    return {'type': 'image_url', 'image_url': f'data:{mtype};base64,{base64.b64encode(data).decode("utf-8")}'}
+    "Convert bytes to litellm content dict (image, pdf, audio, video)"
+    mtype = detect_mime(data)
+    if not mtype: raise ValueError(f'Data must be a supported file type, got {data[:10]}')
+    encoded = base64.b64encode(data).decode("utf-8")    
+    if mtype.startswith('image/'): return {'type': 'image_url', 'image_url': f'data:{mtype};base64,{encoded}'}
+    return {'type': 'file', 'file': {'file_data': f'data:{mtype};base64,{encoded}'}}
 
 # %% ../nbs/00_core.ipynb
 def _add_cache_control(msg,          # LiteLLM formatted msg
@@ -250,7 +252,7 @@ effort = AttrDict({o[0]:o for o in ('low','medium','high')})
 def _mk_prefill(pf): return ModelResponseStream([StreamingChoices(delta=Delta(content=pf,role='assistant'))])
 
 # %% ../nbs/00_core.ipynb
-_final_prompt = "You have no more tool uses. Please summarize your findings. If you did not complete your goal please tell the user what further work needs to be done so they can choose how best to proceed."
+_final_prompt = dict(role="user", content="You have no more tool uses. Please summarize your findings. If you did not complete your goal please tell the user what further work needs to be done so they can choose how best to proceed.")
 
 # %% ../nbs/00_core.ipynb
 class Chat:
@@ -285,7 +287,7 @@ class Chat:
             cache_idxs = L(self.cache_idxs).filter().map(lambda o: o-1 if o>0 else o)
         else:
             cache_idxs = self.cache_idxs
-        if msg: self.hist = mk_msgs(self.hist+[msg], self.cache, cache_idxs, self.ttl)
+        if msg: self.hist = mk_msgs(self.hist+[msg], self.cache and 'claude' in self.model, cache_idxs, self.ttl)
         pf = [{"role":"assistant","content":prefill}] if prefill else []
         return sp + self.hist + pf
 
@@ -306,6 +308,7 @@ class Chat:
                          tools=self.tool_schemas, reasoning_effort = effort.get(think), tool_choice=tool_choice,
                          # temperature is not supported when reasoning
                          temperature=None if think else ifnone(temp,self.temp),
+                         caching=self.cache and 'claude' not in self.model,
                          **kwargs)
         if stream:
             if prefill: yield _mk_prefill(prefill)
@@ -401,6 +404,7 @@ class AsyncChat(Chat):
                          tools=self.tool_schemas, reasoning_effort=effort.get(think), tool_choice=tool_choice,
                          # temperature is not supported when reasoning
                          temperature=None if think else ifnone(temp,self.temp), 
+                         caching=self.cache and 'claude' not in self.model,
                          **kwargs)
         if stream:
             if prefill: yield _mk_prefill(prefill)
@@ -465,20 +469,18 @@ def mk_tr_details(tr, tc, mx=2000):
 # %% ../nbs/00_core.ipynb
 class AsyncStreamFormatter:
     def __init__(self, include_usage=False, mx=2000):
-        self.outp,self.tcs,self.include_usage,self.think,self.mx = '',{},include_usage,False,mx
+        self.outp,self.tcs,self.include_usage,self.mx = '',{},include_usage,mx
     
     def format_item(self, o):
         "Format a single item from the response stream."
         res = ''
         if isinstance(o, ModelResponseStream):
             d = o.choices[0].delta
-            if nested_idx(d, 'reasoning_content'): 
-                self.think = True
-                res += '🧠'
-            elif self.think:
-                self.think = False
-                res += '\n\n'
-            if c:=d.content: res+=c
+            if nested_idx(d, 'reasoning_content') and d['reasoning_content']!='{"text": ""}':
+                res+= '🧠' if not self.outp or self.outp[-1]=='🧠' else '\n\n🧠' # gemini can interleave reasoning
+            elif self.outp and self.outp[-1] == '🧠': res+= '\n\n'
+            if c:=d.content: # gemini has text content in last reasoning chunk
+                res+=f"\n\n{c}" if res and res[-1] == '🧠' else c
         elif isinstance(o, ModelResponse):
             if self.include_usage: res += f"\nUsage: {o.usage}"
             if c:=getattr(contents(o),'tool_calls',None):
