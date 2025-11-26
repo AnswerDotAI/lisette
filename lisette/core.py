@@ -428,20 +428,18 @@ def mk_tr_details(tr, tc, mx=2000):
 # %% ../nbs/00_core.ipynb
 class AsyncStreamFormatter:
     def __init__(self, include_usage=False, mx=2000):
-        self.outp,self.tcs,self.include_usage,self.think,self.mx = '',{},include_usage,False,mx
+        self.outp,self.tcs,self.include_usage,self.mx = '',{},include_usage,mx
     
     def format_item(self, o):
         "Format a single item from the response stream."
         res = ''
         if isinstance(o, ModelResponseStream):
             d = o.choices[0].delta
-            if nested_idx(d, 'reasoning_content') and d['reasoning_content']!='{"text": ""}': 
-                self.think = True
-                res += '🧠' if not self.outp or self.outp[-1]=='🧠' else '\n\n🧠'
-            elif self.think:
-                self.think = False
-                res += '\n\n'
-            if c:=d.content: res+=c
+            if nested_idx(d, 'reasoning_content') and d['reasoning_content']!='{"text": ""}':
+                res+= '🧠' if not self.outp or self.outp[-1]=='🧠' else '\n\n🧠' # gemini can interleave reasoning
+            elif self.outp and self.outp[-1] == '🧠': res+= '\n\n'
+            if c:=d.content: # gemini has text content in last reasoning chunk
+                res+=f"\n\n{c}" if res and res[-1] == '🧠' else c
         elif isinstance(o, ModelResponse):
             if self.include_usage: res += f"\nUsage: {o.usage}"
             if c:=getattr(contents(o),'tool_calls',None):
