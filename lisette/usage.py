@@ -27,9 +27,17 @@ class LisetteUsageLogger(CustomLogger):
     def _log_usage(self, response_obj, response_cost, start_time, end_time):
         usage = response_obj.usage
         ptd   = usage.prompt_tokens_details
-        self.usage.insert(Usage(timestamp=time.time(), model=response_obj.model, user_id=self.user_id_fn(), prompt_tokens=usage.prompt_tokens, completion_tokens=usage.completion_tokens,
-                                    total_tokens=usage.total_tokens, cached_tokens=ptd.cached_tokens if ptd else 0, cache_creation_tokens=usage.cache_creation_input_tokens, 
-                                    cache_read_tokens=usage.cache_read_input_tokens, web_search_requests=nested_idx(usage, 'server_tool_use', 'web_search_requests'), response_cost=response_cost))
+        self.usage.insert(Usage(timestamp=time.time(), 
+                                model=response_obj.model, 
+                                user_id=self.user_id_fn(), 
+                                prompt_tokens=usage.prompt_tokens, 
+                                completion_tokens=usage.completion_tokens,
+                                total_tokens=usage.total_tokens, 
+                                cached_tokens=ptd.cached_tokens if ptd else 0, # used by gemini (read tokens)
+                                cache_creation_tokens=nested_idx(usage, 'cache_creation_input_tokens'),
+                                cache_read_tokens=nested_idx(usage, 'cache_read_input_tokens'), # used by anthropic 
+                                web_search_requests=nested_idx(usage, 'server_tool_use', 'web_search_requests'),
+                                response_cost=response_cost))
                   
     def user_id_fn(self): raise NotImplementedError('Please implement `LisetteUsageLogger.user_id_fn` before initializing, e.g using fastcore.patch.')
 
