@@ -8,7 +8,7 @@ __all__ = ['sonn45', 'detls_tag', 're_tools', 'effort', 'patch_litellm', 'remove
            'astream_with_complete', 'AsyncChat', 'mk_tr_details', 'AsyncStreamFormatter', 'adisplay_stream']
 
 # %% ../nbs/00_core.ipynb
-import asyncio, base64, json, litellm, mimetypes, random, string
+import asyncio, base64, io, json, litellm, mimetypes, random, string
 from typing import Optional
 from html import escape
 from litellm import (acompletion, completion, stream_chunk_builder, Message,
@@ -44,15 +44,11 @@ def _repr_markdown_(self: litellm.ModelResponse):
     if message.tool_calls:
         tool_calls = [f"\n\n🔧 {nested_idx(tc,'function','name')}({nested_idx(tc,'function','arguments')})\n" for tc in message.tool_calls]
         content += "\n".join(tool_calls)
+    for img in getattr(message, 'images', []): content += f"\n\n![generated image]({nested_idx(img, 'image_url', 'url')})"
     if not content: content = str(message)
-    details = [
-        f"id: `{self.id}`",
-        f"model: `{self.model}`",
-        f"finish_reason: `{self.choices[0].finish_reason}`"
-    ]
+    details = [f"id: `{self.id}`", f"model: `{self.model}`", f"finish_reason: `{self.choices[0].finish_reason}`"]
     if hasattr(self, 'usage') and self.usage: details.append(f"usage: `{self.usage}`")
     det_str = '\n- '.join(details)
-    
     return f"""{content}
 
 <details>
@@ -440,6 +436,7 @@ class AsyncStreamFormatter:
             elif self.outp and self.outp[-1] == '🧠': res+= '\n\n'
             if c:=d.content: # gemini has text content in last reasoning chunk
                 res+=f"\n\n{c}" if res and res[-1] == '🧠' else c
+            for img in getattr(d, 'images', []): res += f"\n\n![generated image]({nested_idx(img, 'image_url', 'url')})\n\n"
         elif isinstance(o, ModelResponse):
             if self.include_usage: res += f"\nUsage: {o.usage}"
             if c:=getattr(contents(o),'tool_calls',None):
