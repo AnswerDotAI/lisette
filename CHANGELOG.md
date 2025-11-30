@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.16
+
+### New Features
+
+- Opus 4.5 ([#56](https://github.com/AnswerDotAI/lisette/issues/56))
+
+
 ## 0.0.15
 
 ### New Features
