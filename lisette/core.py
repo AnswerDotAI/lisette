@@ -15,6 +15,7 @@ from html import escape
 from litellm import (acompletion, completion, stream_chunk_builder, Message,
                      ModelResponse, ModelResponseStream, get_model_info, register_model, Usage)
 from litellm.utils import function_to_dict, StreamingChoices, Delta, ChatCompletionMessageToolCall, Function, Choices
+from litellm.exceptions import ContextWindowExceededError
 from toolslm.funccall import mk_ns, call_func, call_func_async, get_schema
 from fastcore.utils import *
 from fastcore import imghdr
@@ -239,6 +240,9 @@ def _mk_prefill(pf): return ModelResponseStream([StreamingChoices(delta=Delta(co
 _final_prompt = "You have no more tool uses. Please summarize your findings. If you did not complete your goal please tell the user what further work needs to be done so they can choose how best to proceed."
 
 # %% ../nbs/00_core.ipynb
+_cwe_msg = "ContextWindowExceededError: Do no more tool calls and complete your response now. Inform user that you ran out of context and explain what the cause was."
+
+# %% ../nbs/00_core.ipynb
 class Chat:
     def __init__(
         self,
@@ -307,9 +311,12 @@ class Chat:
             for r in tool_results: yield r
             if step>=max_steps-1: prompt,tool_choice,search = final_prompt,'none',False
             else: prompt = None
-            yield from self._call(
+            try: yield from self._call(
                 prompt, prefill, temp, think, search, stream, max_steps, step+1,
                 final_prompt, tool_choice, **kwargs)
+            except ContextWindowExceededError:
+                for t in tool_results: t['content'] = _cwe_msg
+                yield from self._call(None, prefill, temp, think, search, stream, max_steps, max_steps, final_prompt, 'none', **kwargs)
     
     def __call__(self,
                  msg=None,          # Message str, or list of multiple message parts
@@ -407,10 +414,11 @@ class AsyncChat(Chat):
             self.hist+=tool_results
             if step>=max_steps-1: prompt,tool_choice,search = final_prompt,'none',False
             else: prompt = None
-            async for result in self._call(
-                prompt, prefill, temp, think, search, stream, max_steps, step+1,
-                final_prompt, tool_choice=tool_choice, **kwargs):
-                    yield result
+            try:
+                async for result in self._call( prompt, prefill, temp, think, search, stream, max_steps, step+1, final_prompt, tool_choice=tool_choice, **kwargs): yield result
+            except ContextWindowExceededError:
+                for t in tool_results: t['content'] = _cwe_msg
+                async for result in self._call(None, prefill, temp, think, search, stream, max_steps, max_steps, final_prompt, 'none', **kwargs): yield result
     
     async def __call__(self,
                        msg=None,          # Message str, or list of multiple message parts
