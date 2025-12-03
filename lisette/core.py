@@ -414,11 +414,11 @@ class AsyncChat(Chat):
             self.hist+=tool_results
             if step>=max_steps-1: prompt,tool_choice,search = final_prompt,'none',False
             else: prompt = None
-            try:
-                async for result in self._call( prompt, prefill, temp, think, search, stream, max_steps, step+1, final_prompt, tool_choice=tool_choice, **kwargs): yield result
-            except ContextWindowExceededError:
-                for t in tool_results: t['content'] = _cwe_msg
-                async for result in self._call(None, prefill, temp, think, search, stream, max_steps, max_steps, final_prompt, 'none', **kwargs): yield result
+            # try:
+            async for result in self._call( prompt, prefill, temp, think, search, stream, max_steps, step+1, final_prompt, tool_choice=tool_choice, **kwargs): yield result
+            # except ContextWindowExceededError:
+            #     for t in tool_results: t['content'] = _cwe_msg
+            #     async for result in self._call(None, prefill, temp, think, search, stream, max_steps, max_steps, final_prompt, 'none', **kwargs): yield result
     
     async def __call__(self,
                        msg=None,          # Message str, or list of multiple message parts
