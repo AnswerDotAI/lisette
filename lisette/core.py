@@ -4,7 +4,7 @@
 
 # %% auto 0
 __all__ = ['sonn45', 'opus45', 'detls_tag', 're_tools', 'effort', 'patch_litellm', 'remove_cache_ckpts', 'contents', 'mk_msg',
-           'fmt2hist', 'mk_msgs', 'stream_with_complete', 'lite_mk_func', 'ToolResponse', 'cite_footnote',
+           'fmt2hist', 'mk_msgs', 'stream_with_complete', 'lite_mk_func', 'ToolResponse', 'structured', 'cite_footnote',
            'cite_footnotes', 'Chat', 'random_tool_id', 'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results',
            'astream_with_complete', 'AsyncChat', 'mk_tr_details', 'AsyncStreamFormatter', 'adisplay_stream']
 
@@ -212,6 +212,28 @@ def _lite_call_func(tc,ns,raise_on_err=True):
     if isinstance(res, ToolResponse): res = res.content
     else: res = str(res)
     return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": res}
+
+# %% ../nbs/00_core.ipynb
+import json
+
+# %% ../nbs/00_core.ipynb
+from fastcore.meta import delegates
+
+# %% ../nbs/00_core.ipynb
+@delegates(completion)
+def structured(
+    m,          # The LiteLLM model string
+    msgs:list,  # A list of messages 
+    tool,       # The tool to be used for creating the structured output. Can also be a class, dataclass or Pydantic model        
+    **kwargs):
+    "Return the value of the tool call (generally used for structured outputs)"
+    t = lite_mk_func(tool)
+    
+    r = completion(m, msgs, tools=[t], tool_choice=t, **kwargs)
+
+    args = json.loads(r.choices[0].message.tool_calls[0].function.arguments)
+
+    return tool(**args)
 
 # %% ../nbs/00_core.ipynb
 def _has_search(m):
