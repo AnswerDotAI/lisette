@@ -7,6 +7,7 @@ __all__ = ['Usage', 'LisetteUsageLogger']
 
 # %% ../nbs/01_usage.ipynb
 from litellm.integrations.custom_logger import CustomLogger
+from fastcore.utils import patch
 import time
 try: 
     from fastlite import *
