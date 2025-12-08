@@ -10,13 +10,14 @@ __all__ = ['sonn45', 'opus45', 'detls_tag', 're_tools', 'effort', 'patch_litellm
 
 # %% ../nbs/00_core.ipynb
 import asyncio, base64, json, litellm, mimetypes, random, string
-from typing import Optional
+from typing import Optional,Callable
 from html import escape
 from litellm import (acompletion, completion, stream_chunk_builder, Message,
                      ModelResponse, ModelResponseStream, get_model_info, register_model, Usage)
 from litellm.utils import function_to_dict, StreamingChoices, Delta, ChatCompletionMessageToolCall, Function, Choices
 from toolslm.funccall import mk_ns, call_func, call_func_async, get_schema
 from fastcore.utils import *
+from fastcore.meta import delegates
 from fastcore import imghdr
 from dataclasses import dataclass
 
@@ -214,25 +215,16 @@ def _lite_call_func(tc,ns,raise_on_err=True):
     return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": res}
 
 # %% ../nbs/00_core.ipynb
-import json
-
-# %% ../nbs/00_core.ipynb
-from fastcore.meta import delegates
-
-# %% ../nbs/00_core.ipynb
 @delegates(completion)
 def structured(
-    m,          # The LiteLLM model string
-    msgs:list,  # A list of messages 
-    tool,       # The tool to be used for creating the structured output. Can also be a class, dataclass or Pydantic model        
+    m:str,          # LiteLLM model string
+    msgs:list,      # List of messages 
+    tool:Callable,  # Tool to be used for creating the structured output (class, dataclass or Pydantic, function, etc)
     **kwargs):
     "Return the value of the tool call (generally used for structured outputs)"
     t = lite_mk_func(tool)
-    
     r = completion(m, msgs, tools=[t], tool_choice=t, **kwargs)
-
     args = json.loads(r.choices[0].message.tool_calls[0].function.arguments)
-
     return tool(**args)
 
 # %% ../nbs/00_core.ipynb
