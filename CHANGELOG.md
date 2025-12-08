@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.17
+
+### Bugs Squashed
+
+- Patch not defined in usage.py ([#61](https://github.com/AnswerDotAI/lisette/issues/61))
+
+
 ## 0.0.16
 
 ### New Features
