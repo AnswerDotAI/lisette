@@ -7,11 +7,9 @@ __all__ = ['Usage', 'LisetteUsageLogger']
 
 # %% ../nbs/01_usage.ipynb
 from litellm.integrations.custom_logger import CustomLogger
-from fastcore.utils import patch
+from fastcore.utils import *
 import time
-try: 
-    from fastlite import *
-    from fastlite.core import dataclass
+try: from fastlite import *
 except ImportError: raise ImportError("Please install `fastlite` to use sqlite based lisette usage logging.")
 
 # %% ../nbs/01_usage.ipynb
