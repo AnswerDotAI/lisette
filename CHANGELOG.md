@@ -2,6 +2,14 @@
 
 <!-- do not remove -->
 
+## 0.0.18
+
+
+### Bugs Squashed
+
+- Fix missing usage import ([#63](https://github.com/AnswerDotAI/lisette/pull/63)), thanks to [@KeremTurgutlu](https://github.com/KeremTurgutlu)
+
+
 ## 0.0.17
 
 ### Bugs Squashed
