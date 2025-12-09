@@ -233,15 +233,7 @@ def _has_search(m):
     return bool(i.get('search_context_cost_per_query') or i.get('supports_web_search'))
 
 # %% ../nbs/00_core.ipynb
-def _filter_srvtools(tcs): return L(tcs).filter(lambda o: not o.id.startswith('srvtoolu_'))
-
-# %% ../nbs/00_core.ipynb
-def _strip_srvtools(tcs):
-    "Filter out server tools only when there's a mix of server and client tools"
-    if not tcs: return tcs
-    srv = L(tcs).filter(lambda o: o.id.startswith('srvtoolu_'))
-    client = L(tcs).filter(lambda o: not o.id.startswith('srvtoolu_'))
-    return list(client) if srv and client else tcs
+def _filter_srvtools(tcs): return L(tcs).filter(lambda o: not o.id.startswith('srvtoolu_')) if tcs else None
 
 # %% ../nbs/00_core.ipynb
 def cite_footnote(msg):
@@ -323,11 +315,11 @@ class Chat:
             res = yield from stream_with_complete(res,postproc=cite_footnotes)
         m = contents(res)
         if prefill: m.content = prefill + m.content
-        m.tool_calls = _strip_srvtools(m.tool_calls)
+        m.tool_calls = _filter_srvtools(m.tool_calls)
         self.hist.append(m)
         yield res
 
-        if tcs := _filter_srvtools(m.tool_calls):
+        if tcs := m.tool_calls:
             tool_results=[_lite_call_func(tc, ns=self.ns) for tc in tcs]
             self.hist+=tool_results
             for r in tool_results: yield r
@@ -422,10 +414,10 @@ class AsyncChat(Chat):
         m=contents(res)
         if prefill: m.content = prefill + m.content
         yield res
-        m.tool_calls = _strip_srvtools(m.tool_calls)
+        m.tool_calls = _filter_srvtools(m.tool_calls)
         self.hist.append(m)
 
-        if tcs := _filter_srvtools(m.tool_calls):
+        if tcs := m.tool_calls:
             tool_results = []
             for tc in tcs:
                 result = await _alite_call_func(tc, ns=self.ns)
