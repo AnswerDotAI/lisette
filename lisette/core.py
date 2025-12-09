@@ -233,6 +233,9 @@ def _has_search(m):
     return bool(i.get('search_context_cost_per_query') or i.get('supports_web_search'))
 
 # %% ../nbs/00_core.ipynb
+def _filter_srvtools(tcs): return L(tcs).filter(lambda o: not o.id.startswith('srvtoolu_')) if tcs else None
+
+# %% ../nbs/00_core.ipynb
 def cite_footnote(msg):
     if not (delta:=nested_idx(msg, 'choices', 0, 'delta')): return
     if citation:= nested_idx(delta, 'provider_specific_fields', 'citation'):
@@ -312,6 +315,7 @@ class Chat:
             res = yield from stream_with_complete(res,postproc=cite_footnotes)
         m = contents(res)
         if prefill: m.content = prefill + m.content
+        m.tool_calls = _filter_srvtools(m.tool_calls)
         self.hist.append(m)
         yield res
 
@@ -410,6 +414,7 @@ class AsyncChat(Chat):
         m=contents(res)
         if prefill: m.content = prefill + m.content
         yield res
+        m.tool_calls = _filter_srvtools(m.tool_calls)
         self.hist.append(m)
 
         if tcs := m.tool_calls:
