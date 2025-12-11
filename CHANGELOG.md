@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.19
+
+### New Features
+
+- Truncate long final tool tokens ([#67](https://github.com/AnswerDotAI/lisette/issues/67))
+
+
 ## 0.0.18
 
 
