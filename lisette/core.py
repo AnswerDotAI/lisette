@@ -446,7 +446,12 @@ class AsyncChat(Chat):
 def _trunc_str(s, mx=2000, replace="<TRUNCATED>"):
     "Truncate `s` to `mx` chars max, adding `replace` if truncated"
     s = str(s).strip()
-    return s[:mx]+replace if len(s)>mx else s
+    if len(s)<=mx: return s
+    s = s[:mx]
+    ss = s.split(' ')
+    if len(ss[-1])>50: ss[-1] = ss[-1][:5]
+    s = ' '.join(ss)
+    return s+replace
 
 # %% ../nbs/00_core.ipynb
 def mk_tr_details(tr, tc, mx=2000):
