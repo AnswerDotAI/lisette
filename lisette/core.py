@@ -89,13 +89,6 @@ def _bytes2content(data):
     return {'type': 'file', 'file': {'file_data': f'data:{mtype};base64,{encoded}'}}
 
 # %% ../nbs/00_core.ipynb
-def _bytes2content(data):
-    "Convert bytes to litellm content dict (image or pdf)"
-    mtype = 'application/pdf' if data[:4] == b'%PDF' else mimetypes.types_map.get(f'.{imghdr.what(None, h=data)}')
-    if not mtype: raise ValueError(f'Data must be image or PDF bytes, got {data[:10]}')
-    return {'type': 'image_url', 'image_url': f'data:{mtype};base64,{base64.b64encode(data).decode("utf-8")}'}
-
-# %% ../nbs/00_core.ipynb
 def _add_cache_control(msg,          # LiteLLM formatted msg
                        ttl=None):    # Cache TTL: '5m' (default) or '1h'
     "cache `msg` with default time-to-live (ttl) of 5minutes ('5m'), but can be set to '1h'."
@@ -351,12 +344,6 @@ class Chat:
         if stream: return result_gen              # streaming
         elif return_all: return list(result_gen)  # toolloop behavior
         else: return last(result_gen)             # normal chat behavior
-
-# %% ../nbs/00_core.ipynb
-@patch
-def print_hist(self:Chat):
-    "Print each message on a different line"
-    for r in self.hist: print(r, end='\n\n')
 
 # %% ../nbs/00_core.ipynb
 @patch
