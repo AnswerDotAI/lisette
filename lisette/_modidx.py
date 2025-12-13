@@ -64,4 +64,5 @@ d = { 'settings': { 'branch': 'main',
                                'lisette.usage.LisetteUsageLogger.user_id_fn': ( 'usage.html#lisetteusagelogger.user_id_fn',
                                                                                 'lisette/usage.py'),
                                'lisette.usage.Usage': ('usage.html#usage', 'lisette/usage.py'),
-                               'lisette.usage.Usage.total_cost': ('usage.html#usage.total_cost', 'lisette/usage.py')}}}
+                               'lisette.usage.Usage.total_cost': ('usage.html#usage.total_cost', 'lisette/usage.py'),
+                               'lisette.usage.search_count': ('usage.html#search_count', 'lisette/usage.py')}}}
