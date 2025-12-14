@@ -2,6 +2,14 @@
 
 <!-- do not remove -->
 
+## 0.0.20
+
+### New Features
+
+- Automatically handle context length issues in tool loop ([#68](https://github.com/AnswerDotAI/lisette/issues/68))
+- Gemini multimodal support ([#53](https://github.com/AnswerDotAI/lisette/pull/53)), thanks to [@KeremTurgutlu](https://github.com/KeremTurgutlu)
+
+
 ## 0.0.19
 
 ### New Features
