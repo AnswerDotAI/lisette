@@ -20,6 +20,7 @@ from fastcore.utils import *
 from fastcore.meta import delegates
 from fastcore import imghdr
 from dataclasses import dataclass
+from litellm.exceptions import ContextWindowExceededError
 
 # %% ../nbs/00_core.ipynb
 def patch_litellm(seed=0):
@@ -252,7 +253,20 @@ effort = AttrDict({o[0]:o for o in ('low','medium','high')})
 def _mk_prefill(pf): return ModelResponseStream([StreamingChoices(delta=Delta(content=pf,role='assistant'))])
 
 # %% ../nbs/00_core.ipynb
+def _trunc_str(s, mx=2000, replace="<TRUNCATED>"):
+    "Truncate `s` to `mx` chars max, adding `replace` if truncated"
+    s = str(s).strip()
+    if len(s)<=mx: return s
+    s = s[:mx]
+    ss = s.split(' ')
+    if len(ss[-1])>50: ss[-1] = ss[-1][:5]
+    s = ' '.join(ss)
+    return s+replace
+
+# %% ../nbs/00_core.ipynb
 _final_prompt = dict(role="user", content="You have no more tool uses. Please summarize your findings. If you did not complete your goal please tell the user what further work needs to be done so they can choose how best to proceed.")
+
+_cwe_msg = "ContextWindowExceededError: Do no more tool calls and complete your response now. Inform user that you ran out of context and explain what the cause was. This is the response to this tool call, truncated if needed: "
 
 # %% ../nbs/00_core.ipynb
 class Chat:
@@ -291,59 +305,68 @@ class Chat:
         pf = [{"role":"assistant","content":prefill}] if prefill else []
         return sp + self.hist + pf
 
-    def _call(self, msg=None, prefill=None, temp=None, think=None, search=None, stream=False, max_steps=2, step=1, final_prompt=None, tool_choice=None, **kwargs):
-        "Internal method that always yields responses"
-        if step>max_steps: return
-        try:
-            model_info = get_model_info(self.model)
-        except Exception:
-            register_model({self.model: {}})
-            model_info = get_model_info(self.model)
-        if not model_info.get("supports_assistant_prefill"): prefill=None
-        if _has_search(self.model) and (s:=ifnone(search,self.search)): kwargs['web_search_options'] = {"search_context_size": effort[s]}
-        else: _=kwargs.pop('web_search_options',None)
-        if self.api_base: kwargs['api_base'] = self.api_base
-        if self.api_key: kwargs['api_key'] = self.api_key
-        res = completion(model=self.model, messages=self._prep_msg(msg, prefill), stream=stream, 
-                         tools=self.tool_schemas, reasoning_effort = effort.get(think), tool_choice=tool_choice,
-                         # temperature is not supported when reasoning
-                         temperature=None if think else ifnone(temp,self.temp),
-                         caching=self.cache and 'claude' not in self.model,
-                         **kwargs)
-        if stream:
-            if prefill: yield _mk_prefill(prefill)
-            res = yield from stream_with_complete(res,postproc=cite_footnotes)
-        m = contents(res)
-        if prefill: m.content = prefill + m.content
-        self.hist.append(m)
-        yield res
+# %% ../nbs/00_core.ipynb
+@patch
+def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None, stream=False, max_steps=2, step=1, final_prompt=None, tool_choice=None, **kwargs):
+    "Internal method that always yields responses"
+    if step>max_steps: return
+    try:
+        model_info = get_model_info(self.model)
+    except Exception:
+        register_model({self.model: {}})
+        model_info = get_model_info(self.model)
+    if not model_info.get("supports_assistant_prefill"): prefill=None
+    if _has_search(self.model) and (s:=ifnone(search,self.search)): kwargs['web_search_options'] = {"search_context_size": effort[s]}
+    else: _=kwargs.pop('web_search_options',None)
+    if self.api_base: kwargs['api_base'] = self.api_base
+    if self.api_key: kwargs['api_key'] = self.api_key
+    res = completion(
+        model=self.model, messages=self._prep_msg(msg, prefill), stream=stream, 
+        tools=self.tool_schemas, reasoning_effort = effort.get(think), tool_choice=tool_choice,
+        # temperature is not supported when reasoning
+        temperature=None if think else ifnone(temp,self.temp),
+        caching=self.cache and 'claude' not in self.model,
+        **kwargs)
+    if stream:
+        if prefill: yield _mk_prefill(prefill)
+        res = yield from stream_with_complete(res,postproc=cite_footnotes)
+    m = contents(res)
+    if prefill: m.content = prefill + m.content
+    self.hist.append(m)
+    yield res
 
-        if tcs := m.tool_calls:
-            tool_results=[_lite_call_func(tc, ns=self.ns) for tc in tcs]
-            self.hist+=tool_results
-            for r in tool_results: yield r
-            if step>=max_steps-1: prompt,tool_choice,search = final_prompt,'none',False
-            else: prompt = None
-            yield from self._call(
-                prompt, prefill, temp, think, search, stream, max_steps, step+1,
-                final_prompt, tool_choice, **kwargs)
-    
-    def __call__(self,
-                 msg=None,          # Message str, or list of multiple message parts
-                 prefill=None,      # Prefill AI response if model supports it
-                 temp=None,         # Override temp set on chat initialization
-                 think=None,        # Thinking (l,m,h)
-                 search=None,       # Override search set on chat initialization (l,m,h)
-                 stream=False,      # Stream results
-                 max_steps=2, # Maximum number of tool calls
-                 final_prompt=_final_prompt, # Final prompt when tool calls have ran out 
-                 return_all=False,  # Returns all intermediate ModelResponses if not streaming and has tool calls
-                 **kwargs):
-        "Main call method - handles streaming vs non-streaming"
-        result_gen = self._call(msg, prefill, temp, think, search, stream, max_steps, 1, final_prompt, **kwargs)     
-        if stream: return result_gen              # streaming
-        elif return_all: return list(result_gen)  # toolloop behavior
-        else: return last(result_gen)             # normal chat behavior
+    if tcs := m.tool_calls:
+        tool_results=[_lite_call_func(tc, ns=self.ns) for tc in tcs]
+        self.hist+=tool_results
+        for r in tool_results: yield r
+        if step>=max_steps-1: prompt,tool_choice,search = final_prompt,'none',False
+        else: prompt = None
+        try: yield from self._call(
+            prompt, prefill, temp, think, search, stream, max_steps, step+1,
+            final_prompt, tool_choice, **kwargs)
+        except ContextWindowExceededError:
+            for t in tool_results:
+                if len(t['content'])>1000: t['content'] = _cwe_msg + _trunc_str(t['content'], mx=1000)
+            yield from self._call(None, prefill, temp, think, search, stream, max_steps, max_steps, final_prompt, 'none', **kwargs)
+
+# %% ../nbs/00_core.ipynb
+@patch
+def __call__(self:Chat,
+             msg=None,          # Message str, or list of multiple message parts
+             prefill=None,      # Prefill AI response if model supports it
+             temp=None,         # Override temp set on chat initialization
+             think=None,        # Thinking (l,m,h)
+             search=None,       # Override search set on chat initialization (l,m,h)
+             stream=False,      # Stream results
+             max_steps=2, # Maximum number of tool calls
+             final_prompt=_final_prompt, # Final prompt when tool calls have ran out 
+             return_all=False,  # Returns all intermediate ModelResponses if not streaming and has tool calls
+             **kwargs):
+    "Main call method - handles streaming vs non-streaming"
+    result_gen = self._call(msg, prefill, temp, think, search, stream, max_steps, 1, final_prompt, **kwargs)     
+    if stream: return result_gen              # streaming
+    elif return_all: return list(result_gen)  # toolloop behavior
+    else: return last(result_gen)             # normal chat behavior
 
 # %% ../nbs/00_core.ipynb
 @patch
@@ -425,37 +448,36 @@ class AsyncChat(Chat):
             self.hist+=tool_results
             if step>=max_steps-1: prompt,tool_choice,search = final_prompt,'none',False
             else: prompt = None
-            async for result in self._call(
-                prompt, prefill, temp, think, search, stream, max_steps, step+1,
-                final_prompt, tool_choice=tool_choice, **kwargs):
-                    yield result
-    
-    async def __call__(self,
-                       msg=None,          # Message str, or list of multiple message parts
-                       prefill=None,      # Prefill AI response if model supports it
-                       temp=None,         # Override temp set on chat initialization
-                       think=None,        # Thinking (l,m,h)
-                       search=None,       # Override search set on chat initialization (l,m,h)
-                       stream=False,      # Stream results
-                       max_steps=2, # Maximum number of tool calls
-                       final_prompt=_final_prompt, # Final prompt when tool calls have ran out 
-                       return_all=False,  # Returns all intermediate ModelResponses if not streaming and has tool calls
-                       **kwargs):
-        result_gen = self._call(msg, prefill, temp, think, search, stream, max_steps, 1, final_prompt, **kwargs)
-        if stream or return_all: return result_gen
-        async for res in result_gen: pass
-        return res # normal chat behavior only return last msg
+            try:
+                async for result in self._call(
+                    prompt, prefill, temp, think, search, stream, max_steps, step+1,
+                    final_prompt, tool_choice=tool_choice, **kwargs): yield result
+            except ContextWindowExceededError:
+                for t in tool_results:
+                    if len(t['content'])>1000: t['content'] = _cwe_msg + _trunc_str(t['content'], mx=1000)
+                async for result in self._call(
+                    prompt, prefill, temp, think, search, stream, max_steps, step+1,
+                    final_prompt, tool_choice='none', **kwargs): yield result
 
 # %% ../nbs/00_core.ipynb
-def _trunc_str(s, mx=2000, replace="<TRUNCATED>"):
-    "Truncate `s` to `mx` chars max, adding `replace` if truncated"
-    s = str(s).strip()
-    if len(s)<=mx: return s
-    s = s[:mx]
-    ss = s.split(' ')
-    if len(ss[-1])>50: ss[-1] = ss[-1][:5]
-    s = ' '.join(ss)
-    return s+replace
+@patch
+async def __call__(
+    self:AsyncChat,
+    msg=None,          # Message str, or list of multiple message parts
+    prefill=None,      # Prefill AI response if model supports it
+    temp=None,         # Override temp set on chat initialization
+    think=None,        # Thinking (l,m,h)
+    search=None,       # Override search set on chat initialization (l,m,h)
+    stream=False,      # Stream results
+    max_steps=2, # Maximum number of tool calls
+    final_prompt=_final_prompt, # Final prompt when tool calls have ran out 
+    return_all=False,  # Returns all intermediate ModelResponses if not streaming and has tool calls
+    **kwargs
+):
+    result_gen = self._call(msg, prefill, temp, think, search, stream, max_steps, 1, final_prompt, **kwargs)
+    if stream or return_all: return result_gen
+    async for res in result_gen: pass
+    return res # normal chat behavior only return last msg
 
 # %% ../nbs/00_core.ipynb
 def mk_tr_details(tr, tc, mx=2000):
