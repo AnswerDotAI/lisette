@@ -351,6 +351,7 @@ def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None,
 
 # %% ../nbs/00_core.ipynb
 @patch
+@delegates(Chat._call)
 def __call__(self:Chat,
              msg=None,          # Message str, or list of multiple message parts
              prefill=None,      # Prefill AI response if model supports it
@@ -461,6 +462,7 @@ class AsyncChat(Chat):
 
 # %% ../nbs/00_core.ipynb
 @patch
+@delegates(Chat._call)
 async def __call__(
     self:AsyncChat,
     msg=None,          # Message str, or list of multiple message parts
