@@ -306,6 +306,9 @@ class Chat:
         return sp + self.hist + pf
 
 # %% ../nbs/00_core.ipynb
+def _filter_srvtools(tcs): return L(tcs).filter(lambda o: not o.id.startswith('srvtoolu_')) if tcs else None
+
+# %% ../nbs/00_core.ipynb
 @patch
 def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None, stream=False, max_steps=2, step=1, final_prompt=None, tool_choice=None, **kwargs):
     "Internal method that always yields responses"
@@ -335,7 +338,7 @@ def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None,
     self.hist.append(m)
     yield res
 
-    if tcs := m.tool_calls:
+    if tcs := _filter_srvtools(m.tool_calls):
         tool_results=[_lite_call_func(tc, ns=self.ns) for tc in tcs]
         self.hist+=tool_results
         for r in tool_results: yield r
@@ -440,7 +443,7 @@ class AsyncChat(Chat):
         yield res
         self.hist.append(m)
 
-        if tcs := m.tool_calls:
+        if tcs := _filter_srvtools(m.tool_calls):
             tool_results = []
             for tc in tcs:
                 result = await _alite_call_func(tc, ns=self.ns)
