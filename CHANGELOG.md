@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.21
+
+### New Features
+
+- update litellm 1.80.10 ([#69](https://github.com/AnswerDotAI/lisette/pull/69)), thanks to [@KeremTurgutlu](https://github.com/KeremTurgutlu)
+
+
 ## 0.0.20
 
 ### New Features
