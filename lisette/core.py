@@ -209,10 +209,11 @@ class ToolResponse:
     content: list[str,str]
 
 # %% ../nbs/00_core.ipynb
-def _lite_call_func(tc,ns,raise_on_err=True):
+def _lite_call_func(tc, ns, tool_schemas, raise_on_err=True):
+    if (fn:=tc.function.name) not in [o['function']['name'] for o in tool_schemas or []]: raise ValueError(f"Tool not defined in tool_schemas: {fn}")
     try: fargs = json.loads(tc.function.arguments)
     except Exception as e: raise ValueError(f"Failed to parse function arguments: {tc.function.arguments}") from e
-    res = call_func(tc.function.name, fargs,ns=ns)
+    res = call_func(fn, fargs,ns=ns)
     if isinstance(res, ToolResponse): res = res.content
     else: res = str(res)
     return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": res}
@@ -339,7 +340,7 @@ def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None,
     yield res
 
     if tcs := _filter_srvtools(m.tool_calls):
-        tool_results=[_lite_call_func(tc, ns=self.ns) for tc in tcs]
+        tool_results=[_lite_call_func(tc, ns=self.ns, tool_schemas=self.tool_schemas) for tc in tcs]
         self.hist+=tool_results
         for r in tool_results: yield r
         if step>=max_steps-1: prompt,tool_choice,search = final_prompt,'none',False
@@ -402,10 +403,11 @@ def mk_tc_result(tc, result): return {'tool_call_id': tc['id'], 'role': 'tool', 
 def mk_tc_results(tcq, results): return [mk_tc_result(a,b) for a,b in zip(tcq.tool_calls, results)]
 
 # %% ../nbs/00_core.ipynb
-async def _alite_call_func(tc, ns, raise_on_err=True):
+async def _alite_call_func(tc, ns, tool_schemas, raise_on_err=True):
+    if (fn:=tc.function.name) not in [o['function']['name'] for o in tool_schemas or []]: raise ValueError(f"Tool not defined in tool_schemas: {fn}")
     try: fargs = json.loads(tc.function.arguments)
     except Exception as e: raise ValueError(f"Failed to parse function arguments: {tc.function.arguments}") from e
-    res = await call_func_async(tc.function.name, fargs, ns=ns)
+    res = await call_func_async(fn, fargs, ns=ns)
     if isinstance(res, ToolResponse): res = res.content
     else: res = str(res)
     return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": res}
@@ -446,7 +448,7 @@ class AsyncChat(Chat):
         if tcs := _filter_srvtools(m.tool_calls):
             tool_results = []
             for tc in tcs:
-                result = await _alite_call_func(tc, ns=self.ns)
+                result = await _alite_call_func(tc, ns=self.ns, tool_schemas=self.tool_schemas)
                 tool_results.append(result)
                 yield result
             self.hist+=tool_results
