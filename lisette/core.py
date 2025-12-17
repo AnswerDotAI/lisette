@@ -25,7 +25,11 @@ from litellm.exceptions import ContextWindowExceededError
 # %% ../nbs/00_core.ipynb
 def patch_litellm(seed=0):
     "Patch litellm.ModelResponseBase such that `id` and `created` are fixed."
-    from litellm.types.utils import ModelResponseBase
+    from litellm.types.utils import ModelResponseBase, ChatCompletionMessageToolCall
+    from uuid import UUID
+    from base64 import b64encode
+    if seed is not None: random.seed(seed) # ensures random ids like tool call ids are deterministic
+    
     @patch
     def __init__(self: ModelResponseBase, id=None, created=None, *args, **kwargs): 
         self._orig___init__(id='chatcmpl-xxx', created=1000000000, *args, **kwargs)
@@ -36,7 +40,16 @@ def patch_litellm(seed=0):
         elif name == 'created': value = 1000000000
         self._orig___setattr__(name, value)
 
-    if seed is not None: random.seed(seed) # ensures random ids like tool call ids are deterministic
+    def _unqid():
+        res = b64encode(UUID(int=random.getrandbits(128), version=4).bytes)
+        return '_' + res.decode().rstrip('=').translate(str.maketrans('+/', '_-'))
+
+    @patch
+    def __init__(self: ChatCompletionMessageToolCall, function=None, id=None, type="function", **kwargs):
+        # we keep the tool call prefix if it exists, this is needed for example to handle srvtoolu_ correctly.
+        id = id.split('_')[0]+_unqid() if id and '_' in id else id
+        self._orig___init__(function=function, id=id, type=type, **kwargs)
+
 
 # %% ../nbs/00_core.ipynb
 @patch
