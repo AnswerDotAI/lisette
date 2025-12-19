@@ -2,6 +2,15 @@
 
 <!-- do not remove -->
 
+## 0.0.22
+
+### New Features
+
+- Check tool in schemas ([#74](https://github.com/AnswerDotAI/lisette/pull/74)), thanks to [@RensDimmendaal](https://github.com/RensDimmendaal)
+- Seeded tool ids for cachy ([#73](https://github.com/AnswerDotAI/lisette/pull/73)), thanks to [@RensDimmendaal](https://github.com/RensDimmendaal)
+- Add CI ([#71](https://github.com/AnswerDotAI/lisette/pull/71)), thanks to [@KeremTurgutlu](https://github.com/KeremTurgutlu)
+
+
 ## 0.0.21
 
 ### New Features
