@@ -512,12 +512,13 @@ def mk_tr_details(tr, tc, mx=2000):
 
 # %% ../nbs/00_core.ipynb
 class AsyncStreamFormatter:
-    def __init__(self, include_usage=False, mx=2000):
-        self.outp,self.tcs,self.include_usage,self.mx = '',{},include_usage,mx
+    def __init__(self, include_usage=False, mx=2000, debug=False):
+        self.outp,self.tcs,self.include_usage,self.mx,self.debug = '',{},include_usage,mx,debug
     
     def format_item(self, o):
         "Format a single item from the response stream."
         res = ''
+        if self.debug: print(o)
         if isinstance(o, ModelResponseStream):
             d = o.choices[0].delta
             if nested_idx(d, 'reasoning_content') and d['reasoning_content']!='{"text": ""}':
