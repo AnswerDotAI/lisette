@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.23
+
+### New Features
+
+- Add debug flag to AsyncStreamFormatter ([#75](https://github.com/AnswerDotAI/lisette/issues/75))
+
+
 ## 0.0.22
 
 ### New Features
