@@ -29,9 +29,10 @@ class LisetteUsageLogger(CustomLogger):
         self.db = Database(db_path)
         self.usage = self.db.create(Usage)
     
-    async def async_log_success_event(self, kwargs, response_obj, start_time, end_time): self._log_usage(response_obj, kwargs['response_cost'], start_time, end_time)
-    def log_success_event(self, kwargs, response_obj, start_time, end_time):             self._log_usage(response_obj, kwargs['response_cost'], start_time, end_time)
-    def _log_usage(self, response_obj, response_cost, start_time, end_time):
+    async def async_log_success_event(self, kwargs, response_obj, start_time, end_time): self._log_usage(response_obj, kwargs, start_time, end_time)
+    def log_success_event(self, kwargs, response_obj, start_time, end_time):             self._log_usage(response_obj, kwargs, start_time, end_time)
+    def _log_usage(self, response_obj, kwargs, start_time, end_time):
+        response_cost = kwargs.get('response_cost') or nested_idx(kwargs,'standard_logging_object','cost_breakdown','total_cost')
         usage = response_obj.usage
         ptd   = usage.prompt_tokens_details
         self.usage.insert(Usage(timestamp=time.time(),
