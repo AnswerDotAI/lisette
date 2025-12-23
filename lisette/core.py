@@ -227,7 +227,7 @@ def _lite_call_func(tc, tool_schemas, ns, raise_on_err=True):
     if fn not in valid: res = f"Tool not defined in tool_schemas: {fn}"
     else:
         try: res = call_func(fn, json.loads(tc.function.arguments), ns=ns)
-        except JSONDecodeError: res = f"Failed to parse function arguments: {tc.function.arguments}"
+        except json.JSONDecodeError: res = f"Failed to parse function arguments: {tc.function.arguments}"
         else: res = res.content if isinstance(res, ToolResponse) else str(res)
     return {"tool_call_id": tc.id, "role": "tool", "name": fn, "content": res}
 
