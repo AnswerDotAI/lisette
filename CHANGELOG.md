@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.24
+
+### Bugs Squashed
+
+- fix import error ([#76](https://github.com/AnswerDotAI/lisette/pull/76)), thanks to [@RensDimmendaal](https://github.com/RensDimmendaal)
+
+
 ## 0.0.23
 
 ### New Features
