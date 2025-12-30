@@ -223,7 +223,7 @@ class ToolResponse:
 
 # %% ../nbs/00_core.ipynb
 def _lite_call_func(tc, tool_schemas, ns, raise_on_err=True):
-    fn, valid = tc.function.name, {o['function']['name'] for o in tool_schemas or []}
+    fn, valid = tc.function.name, {nested_idx(o,'function','name') for o in tool_schemas or []}
     if fn not in valid: res = f"Tool not defined in tool_schemas: {fn}"
     else:
         try: res = call_func(fn, json.loads(tc.function.arguments), ns=ns)
@@ -417,7 +417,7 @@ def mk_tc_results(tcq, results): return [mk_tc_result(a,b) for a,b in zip(tcq.to
 
 # %% ../nbs/00_core.ipynb
 async def _alite_call_func(tc, tool_schemas, ns, raise_on_err=True):
-    fn, valid = tc.function.name, {o['function']['name'] for o in tool_schemas or []}
+    fn, valid = tc.function.name, {nested_idx(o,'function','name') for o in tool_schemas or []}
     if fn not in valid: res = f"Tool not defined in tool_schemas: {fn}"
     else:
         try: fargs = json.loads(tc.function.arguments)
