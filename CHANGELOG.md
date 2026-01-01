@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.25
+
+### Bugs Squashed
+
+- fix native tool schemas in func call ([#78](https://github.com/AnswerDotAI/lisette/pull/78)), thanks to [@KeremTurgutlu](https://github.com/KeremTurgutlu)
+
+
 ## 0.0.24
 
 ### Bugs Squashed
