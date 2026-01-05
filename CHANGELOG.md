@@ -2,6 +2,14 @@
 
 <!-- do not remove -->
 
+## 0.0.26
+
+### New Features
+
+- Add tool params to summary ([#81](https://github.com/AnswerDotAI/lisette/issues/81))
+- add tc name in details ([#80](https://github.com/AnswerDotAI/lisette/pull/80)), thanks to [@ncoop57](https://github.com/ncoop57)
+
+
 ## 0.0.25
 
 ### Bugs Squashed
