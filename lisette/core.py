@@ -149,12 +149,14 @@ def mk_msg(
 
 # %% ../nbs/00_core.ipynb
 detls_tag = "<details class='tool-usage-details'>"
-re_tools = re.compile(fr"^({detls_tag}\n+```json\n+(.*?)\n+```\n+</details>)", flags=re.DOTALL|re.MULTILINE)
+re_tools = re.compile(  fr"^({detls_tag}\n*(?:<summary>.*?</summary>\n*)?\n*```json\n+(.*?)\n+```\n+</details>)",
+                        flags=re.DOTALL|re.MULTILINE)
 
 # %% ../nbs/00_core.ipynb
 def _extract_tool(text:str)->tuple[dict,dict]:
     "Extract tool call and results from <details> block"
-    d = json.loads(text.strip())
+    try: d = json.loads(text.strip())
+    except: return
     call = d['call']
     func = call['function']
     tc = ChatCompletionMessageToolCall(Function(dumps(call['arguments']),func), d['id'])
@@ -169,10 +171,10 @@ def fmt2hist(outp:str)->list:
         txt = txt.strip() if tooljson or txt.strip() else '.'
         hist.append(lm:=Message(txt))
         if tooljson:
-            tcr = _extract_tool(tooljson)
-            if not hist: hist.append(lm) # if LLM calls a tool without talking
-            lm.tool_calls = lm.tool_calls+[tcr[0]] if lm.tool_calls else [tcr[0]] 
-            hist.append(tcr[1])
+            if tcr := _extract_tool(tooljson):
+                if not hist: hist.append(lm) # if LLM calls a tool without talking
+                lm.tool_calls = lm.tool_calls+[tcr[0]] if lm.tool_calls else [tcr[0]] 
+                hist.append(tcr[1])
     return hist
 
 # %% ../nbs/00_core.ipynb
@@ -508,7 +510,8 @@ def mk_tr_details(tr, tc, mx=2000):
     res = {'id':tr['tool_call_id'], 
            'call':{'function': tc.function.name, 'arguments': args},
            'result':_trunc_str(tr.get('content'), mx=mx),}
-    return f"\n\n{detls_tag}\n\n```json\n{dumps(res, indent=2)}\n```\n\n</details>\n\n"
+    summ = f"<summary>Tool call ({tc.function.name}) details</summary>"
+    return f"\n\n{detls_tag}\n{summ}\n\n```json\n{dumps(res, indent=2)}\n```\n\n</details>\n\n"
 
 # %% ../nbs/00_core.ipynb
 class AsyncStreamFormatter:
