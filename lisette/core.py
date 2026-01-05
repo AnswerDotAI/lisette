@@ -423,7 +423,7 @@ async def _alite_call_func(tc, tool_schemas, ns, raise_on_err=True):
     if fn not in valid: res = f"Tool not defined in tool_schemas: {fn}"
     else:
         try: fargs = json.loads(tc.function.arguments)
-        except JSONDecodeError: res = f"Failed to parse function arguments: {tc.function.arguments}"
+        except json.JSONDecodeError: res = f"Failed to parse function arguments: {tc.function.arguments}"
         else:
             res = await call_func_async(fn, fargs, ns=ns)
             res = res.content if isinstance(res, ToolResponse) else str(res)
@@ -504,13 +504,17 @@ async def __call__(
     return res # normal chat behavior only return last msg
 
 # %% ../nbs/00_core.ipynb
+def _trunc_param(v, mx=50):
+    "Truncate and escape param value for display"
+    return _trunc_str(str(v).replace('`', r'\`'), mx=mx, replace='…')
+
 def mk_tr_details(tr, tc, mx=2000):
     "Create <details> block for tool call as JSON"
     args = {k:_trunc_str(v, mx=mx) for k,v in json.loads(tc.function.arguments).items()}
     res = {'id':tr['tool_call_id'], 
            'call':{'function': tc.function.name, 'arguments': args},
            'result':_trunc_str(tr.get('content'), mx=mx),}
-    params = ', '.join(f"{k}={_trunc_str(str(v).replace('`', '\\`'), mx=50, replace='…')}" for k,v in args.items())
+    params = ', '.join(f"{k}={_trunc_param(v)}" for k,v in args.items())
     summ = f"<summary>{tc.function.name}({params})</summary>"
     return f"\n\n{detls_tag}\n{summ}\n\n```json\n{dumps(res, indent=2)}\n```\n\n</details>\n\n"
 
