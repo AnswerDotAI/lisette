@@ -510,7 +510,8 @@ def mk_tr_details(tr, tc, mx=2000):
     res = {'id':tr['tool_call_id'], 
            'call':{'function': tc.function.name, 'arguments': args},
            'result':_trunc_str(tr.get('content'), mx=mx),}
-    summ = f"<summary>Tool call ({tc.function.name}) details</summary>"
+    params = ', '.join(f"{k}={_trunc_str(str(v).replace('`', '\\`'), mx=50, replace='…')}" for k,v in args.items())
+    summ = f"<summary>{tc.function.name}({params})</summary>"
     return f"\n\n{detls_tag}\n{summ}\n\n```json\n{dumps(res, indent=2)}\n```\n\n</details>\n\n"
 
 # %% ../nbs/00_core.ipynb
