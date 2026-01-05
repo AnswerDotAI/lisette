@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.27
+
+### Bugs Squashed
+
+- Missing json prefix ([#82](https://github.com/AnswerDotAI/lisette/issues/82))
+
+
 ## 0.0.26
 
 ### New Features
