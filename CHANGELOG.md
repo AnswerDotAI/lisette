@@ -7,7 +7,6 @@
 ### New Features
 
 - Add `StreamFormatter` ([#83](https://github.com/AnswerDotAI/lisette/issues/83))
-- add tc name in details ([#80](https://github.com/AnswerDotAI/lisette/pull/80)), thanks to [@ncoop57](https://github.com/ncoop57)
 
 
 ## 0.0.27
