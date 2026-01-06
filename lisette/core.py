@@ -6,7 +6,8 @@
 __all__ = ['sonn45', 'opus45', 'detls_tag', 're_tools', 'effort', 'patch_litellm', 'remove_cache_ckpts', 'contents', 'mk_msg',
            'fmt2hist', 'mk_msgs', 'stream_with_complete', 'lite_mk_func', 'ToolResponse', 'structured', 'cite_footnote',
            'cite_footnotes', 'Chat', 'random_tool_id', 'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results',
-           'astream_with_complete', 'AsyncChat', 'mk_tr_details', 'AsyncStreamFormatter', 'adisplay_stream']
+           'astream_with_complete', 'AsyncChat', 'mk_tr_details', 'StreamFormatter', 'AsyncStreamFormatter',
+           'display_stream', 'adisplay_stream']
 
 # %% ../nbs/00_core.ipynb
 import asyncio, base64, json, litellm, mimetypes, random, string
@@ -519,7 +520,7 @@ def mk_tr_details(tr, tc, mx=2000):
     return f"\n\n{detls_tag}\n{summ}\n\n```json\n{dumps(res, indent=2)}\n```\n\n</details>\n\n"
 
 # %% ../nbs/00_core.ipynb
-class AsyncStreamFormatter:
+class StreamFormatter:
     def __init__(self, include_usage=False, mx=2000, debug=False):
         self.outp,self.tcs,self.include_usage,self.mx,self.debug = '',{},include_usage,mx,debug
     
@@ -543,9 +544,27 @@ class AsyncStreamFormatter:
         self.outp+=res
         return res
     
+    def format_stream(self, rs):
+        "Format the response stream for markdown display."
+        for o in rs: yield self.format_item(o)
+
+# %% ../nbs/00_core.ipynb
+class AsyncStreamFormatter(StreamFormatter):
     async def format_stream(self, rs):
         "Format the response stream for markdown display."
         async for o in rs: yield self.format_item(o)
+
+# %% ../nbs/00_core.ipynb
+def display_stream(rs):
+    "Use IPython.display to markdown display the response stream."
+    try: from IPython.display import display, Markdown
+    except ModuleNotFoundError: raise ModuleNotFoundError("This function requires ipython. Please run `pip install ipython` to use.")
+    fmt = StreamFormatter()
+    md = ''
+    for o in fmt.format_stream(rs): 
+        md+=o
+        display(Markdown(md),clear=True)
+    return fmt
 
 # %% ../nbs/00_core.ipynb
 async def adisplay_stream(rs):
