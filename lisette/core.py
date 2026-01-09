@@ -61,6 +61,7 @@ def _repr_markdown_(self: litellm.ModelResponse):
     if message.tool_calls:
         tool_calls = [f"\n\n🔧 {nested_idx(tc,'function','name')}({nested_idx(tc,'function','arguments')})\n" for tc in message.tool_calls]
         content += "\n".join(tool_calls)
+    for img in getattr(message, 'images', []): content += f"\n\n![generated image]({nested_idx(img, 'image_url', 'url')})"
     if not content: content = str(message)
     details = [
         f"id: `{self.id}`",
@@ -535,6 +536,7 @@ class StreamFormatter:
             elif self.outp and self.outp[-1] == '🧠': res+= '\n\n'
             if c:=d.content: # gemini has text content in last reasoning chunk
                 res+=f"\n\n{c}" if res and res[-1] == '🧠' else c
+            for img in getattr(d, 'images', []): res += f"\n\n![generated image]({nested_idx(img, 'image_url', 'url')})\n\n"
         elif isinstance(o, ModelResponse):
             if self.include_usage: res += f"\nUsage: {o.usage}"
             if c:=getattr(contents(o),'tool_calls',None):
