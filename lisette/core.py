@@ -302,6 +302,7 @@ class Chat:
         ttl=None,                 # Anthropic prompt caching ttl
         api_base=None,            # API base URL for custom providers
         api_key=None,             # API key for custom providers
+        extra_headers=None,       # Extra HTTP headers for custom providers
     ):
         "LiteLLM chat client."
         self.model = model
@@ -341,6 +342,7 @@ def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None,
     else: _=kwargs.pop('web_search_options',None)
     if self.api_base: kwargs['api_base'] = self.api_base
     if self.api_key: kwargs['api_key'] = self.api_key
+    if self.extra_headers: kwargs['extra_headers'] = self.extra_headers
     res = completion(
         model=self.model, messages=self._prep_msg(msg, prefill), stream=stream, 
         tools=self.tool_schemas, reasoning_effort = effort.get(think), tool_choice=tool_choice,
