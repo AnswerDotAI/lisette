@@ -2,6 +2,20 @@
 
 <!-- do not remove -->
 
+## 0.0.29
+
+### New Features
+
+- Add `extra_headers` parameter to Chat ([#86](https://github.com/AnswerDotAI/lisette/pull/86)), thanks to [@benreeve1984](https://github.com/benreeve1984)
+  - Use case: Corporate API gateways and proxies can require custom authentication headers (e.g., api-key) rather than standard Bearer token auth
+- display generated imgs ([#84](https://github.com/AnswerDotAI/lisette/pull/84)), thanks to [@RensDimmendaal](https://github.com/RensDimmendaal)
+
+### Bugs Squashed
+
+- Upgrade litellm to `>1.80.5` ([#64](https://github.com/AnswerDotAI/lisette/issues/64))
+  - There is a web search requests usage related fix in beyond this release.
+
+
 ## 0.0.28
 
 ### New Features
