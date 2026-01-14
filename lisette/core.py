@@ -5,9 +5,9 @@
 # %% auto 0
 __all__ = ['sonn45', 'opus45', 'detls_tag', 're_tools', 'effort', 'patch_litellm', 'remove_cache_ckpts', 'contents',
            'stop_reason', 'mk_msg', 'fmt2hist', 'mk_msgs', 'stream_with_complete', 'lite_mk_func', 'ToolResponse',
-           'structured', 'cite_footnote', 'cite_footnotes', 'Chat', 'add_warning', 'clean_incomplete_srvtool',
-           'random_tool_id', 'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results', 'astream_with_complete',
-           'AsyncChat', 'mk_tr_details', 'StreamFormatter', 'AsyncStreamFormatter', 'display_stream', 'adisplay_stream']
+           'structured', 'cite_footnote', 'cite_footnotes', 'Chat', 'add_warning', 'random_tool_id', 'mk_tc',
+           'mk_tc_req', 'mk_tc_result', 'mk_tc_results', 'astream_with_complete', 'AsyncChat', 'mk_tr_details',
+           'StreamFormatter', 'AsyncStreamFormatter', 'display_stream', 'adisplay_stream']
 
 # %% ../nbs/00_core.ipynb
 import asyncio, base64, json, litellm, mimetypes, random, string
@@ -336,13 +336,14 @@ def add_warning(r, msg):
     else: r.choices[0].message.content = f"<warning>{msg}</warning>"
 
 # %% ../nbs/00_core.ipynb
-def clean_incomplete_srvtool(hist):
-    "Remove incomplete server tool call at hist[-2] if present"
-    if len(hist) >= 2 and hasattr(hist[-2], 'tool_calls') and hist[-2].tool_calls:
-        for tc in hist[-2].tool_calls:
-            if tc.get('id', '').startswith('srvtoolu_'):
-                hist.pop(-2)
-                return
+def _handle_stop_reason(res):
+    "Returns (action, warning_msg) - action is 'warning', 'pause', or None"
+    sr = stop_reason(res)
+    if sr == 'length': return 'warning', 'Response was cut off at token limit.'
+    if sr == 'refusal': return 'warning', 'AI was unable to process this request'
+    if sr == 'pause_turn': return 'retry', None
+    return None, None
+
 
 # %% ../nbs/00_core.ipynb
 @patch
@@ -373,15 +374,13 @@ def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None,
     m = contents(res)
     if prefill: m.content = prefill + m.content
     self.hist.append(m)
-    if (sr:= stop_reason(res)) == 'length': 
-        add_warning(res, 'Response was cut off at token limit.')
-    elif sr == 'refusal':
-        add_warning(res, 'AI was unable to process this request')
-    elif sr == 'pause_turn':
+    action, msg = _handle_stop_reason(res)
+    if action == 'warning': add_warning(res, msg)
+    elif action == 'retry':
         yield from self._call(
             None, prefill, temp, think, search, stream, max_steps, step,
             final_prompt, tool_choice, **kwargs)
-        clean_incomplete_srvtool(self.hist) # rm incomplete srvtool
+        self.hist.pop(-2) # rm incomplete srvtoolu_
         return
     yield res
     if tcs := _filter_srvtools(m.tool_calls):
@@ -490,15 +489,13 @@ class AsyncChat(Chat):
         m=contents(res)
         if prefill: m.content = prefill + m.content
         self.hist.append(m)
-        if (sr:= stop_reason(res)) == 'length': 
-            add_warning(res, 'Response was cut off at token limit.')
-        elif sr == 'refusal':
-            add_warning(res, 'AI was unable to process this request')
-        elif sr == 'pause_turn':
+        action, msg = _handle_stop_reason(res)
+        if action == 'warning': add_warning(res, msg)
+        elif action == 'retry':
             async for result in self._call(
                 None, prefill, temp, think, search, stream, max_steps, step,
                 final_prompt, tool_choice, **kwargs): yield result
-            clean_incomplete_srvtool(self.hist)
+            self.hist.pop(-2) # rm incomplete srvtoolu_
             return
         yield res
 
