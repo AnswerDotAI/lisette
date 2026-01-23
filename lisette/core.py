@@ -155,10 +155,11 @@ def mk_msg(
 
 # %% ../nbs/00_core.ipynb #8886f917
 tool_dtls_tag = "<details class='tool-usage-details'>"
-re_tools = re.compile(  fr"^({tool_dtls_tag}\n*(?:<summary>.*?</summary>\n*)?\n*```json\n+(.*?)\n+```\n+</details>)",
-                        flags=re.DOTALL|re.MULTILINE)
+re_tools = re.compile(fr"^({tool_dtls_tag}\n*(?:<summary>.*?</summary>\n*)?\n*```json\n+(.*?)\n+```\n+</details>)",
+                      flags=re.DOTALL|re.MULTILINE)
 token_dtls_tag = "<details class='token-usage-details'>"
-re_token = re.compile(fr"^{re.escape(token_dtls_tag)}.*?</details>\n?", flags=re.DOTALL|re.MULTILINE)
+re_token = re.compile(fr"^{re.escape(token_dtls_tag)}<summary>.*?</summary>\n*\n*`Usage\(.*?\)`\n*\n*</details>\n?",
+                      flags=re.DOTALL|re.MULTILINE)
 
 # %% ../nbs/00_core.ipynb #303951a2
 def _extract_tool(text:str)->tuple[dict,dict]:
