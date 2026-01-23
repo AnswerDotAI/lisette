@@ -291,8 +291,8 @@ def _trunc_str(s, mx=2000, replace="<TRUNCATED>"):
     s = ' '.join(ss)
     return s+replace
 
-# %% ../nbs/00_core.ipynb #e18e226c
-_final_prompt = dict(role="user", content="You have no more tool uses. Please summarize your findings. If you did not complete your goal please tell the user what further work needs to be done so they can choose how best to proceed.")
+# %% ../nbs/00_core.ipynb
+_final_prompt = dict(role="user", content="You have used all your tool calls for this turn. Please summarize your findings. If you did not complete your goal, tell the user what further work is needed. You may use tools again on the next user message.")
 
 _cwe_msg = "ContextWindowExceededError: Do no more tool calls and complete your response now. Inform user that you ran out of context and explain what the cause was. This is the response to this tool call, truncated if needed: "
 
