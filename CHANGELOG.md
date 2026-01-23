@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.30
+
+### Bugs Squashed
+
+- handle length,refusal,pause stop reasons ([#91](https://github.com/AnswerDotAI/lisette/pull/91)), thanks to [@KeremTurgutlu](https://github.com/KeremTurgutlu)
+
+
 ## 0.0.29
 
 ### New Features
