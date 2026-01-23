@@ -7,7 +7,8 @@ __all__ = ['sonn45', 'opus45', 'tool_dtls_tag', 're_tools', 'token_dtls_tag', 'r
            'remove_cache_ckpts', 'contents', 'stop_reason', 'mk_msg', 'fmt2hist', 'mk_msgs', 'stream_with_complete',
            'lite_mk_func', 'ToolResponse', 'structured', 'cite_footnote', 'cite_footnotes', 'Chat', 'add_warning',
            'random_tool_id', 'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results', 'astream_with_complete',
-           'AsyncChat', 'mk_tr_details', 'StreamFormatter', 'AsyncStreamFormatter', 'display_stream', 'adisplay_stream']
+           'AsyncChat', 'mk_tr_details', 'fmt_usage', 'StreamFormatter', 'AsyncStreamFormatter', 'display_stream',
+           'adisplay_stream']
 
 # %% ../nbs/00_core.ipynb #82380377
 import asyncio, base64, json, litellm, mimetypes, random, string
@@ -560,6 +561,18 @@ def mk_tr_details(tr, tc, mx=2000):
     summ = f"<summary>{tc.function.name}({params})</summary>"
     return f"\n\n{tool_dtls_tag}\n{summ}\n\n```json\n{dumps(res, indent=2)}\n```\n\n</details>\n\n"
 
+# %% ../nbs/00_core.ipynb #c49b2749
+def fmt_usage(u):
+    "Format usage stats with cache hit rate as lead metric."
+    prompt,comp,total = u.prompt_tokens or 0, u.completion_tokens or 0, u.total_tokens or 0
+    cached = nested_idx(u,'prompt_tokens_details','cached_tokens') or 0
+    cache_new = nested_idx(u,'prompt_tokens_details','cache_creation_tokens') or 0
+    reasoning = nested_idx(u,'completion_tokens_details','reasoning_tokens') or 0
+    hit = f"{100*cached/prompt:.1f}%" if prompt else "N/A"
+    cache_info = f" (+{cached:,} cached, {cache_new:,} new)" if cached or cache_new else ""
+    reason_info = f" (reasoning {reasoning:,})" if reasoning else ""
+    return f"Cache hit: {hit} | Tokens: total={total:,} input={prompt:,}{cache_info} output={comp:,}{reason_info}"
+
 # %% ../nbs/00_core.ipynb #89c788df
 class StreamFormatter:
     def __init__(self, include_usage=False, mx=2000, debug=False):
@@ -578,7 +591,7 @@ class StreamFormatter:
                 res+=f"\n\n{c}" if res and res[-1] == '🧠' else c
             for img in getattr(d, 'images', []): res += f"\n\n![generated image]({nested_idx(img, 'image_url', 'url')})\n\n"
         elif isinstance(o, ModelResponse):
-            if self.include_usage: res += f"\n{token_dtls_tag}<summary>Usage</summary>\n\n`{o.usage}`\n\n</details>\n"
+            if self.include_usage: res += f"\n{token_dtls_tag}<summary>{fmt_usage(o.usage)}</summary>\n\n`{o.usage}`\n\n</details>\n"
             if c:=getattr(contents(o),'tool_calls',None):
                 self.tcs = {tc.id:tc for tc in c}
         elif isinstance(o, dict) and 'tool_call_id' in o:
