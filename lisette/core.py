@@ -10,7 +10,7 @@ __all__ = ['sonn45', 'opus45', 'detls_tag', 're_tools', 'effort', 'patch_litellm
            'StreamFormatter', 'AsyncStreamFormatter', 'display_stream', 'adisplay_stream']
 
 # %% ../nbs/00_core.ipynb #82380377
-import asyncio, base64, json, litellm, mimetypes, random, string
+import asyncio, base64, json, litellm, mimetypes, random, string, ast
 from typing import Optional,Callable
 from html import escape
 from litellm import (acompletion, completion, stream_chunk_builder, Message,
@@ -543,7 +543,9 @@ async def __call__(
 # %% ../nbs/00_core.ipynb #049f141f
 def _trunc_param(v, mx=50):
     "Truncate and escape param value for display"
-    return _trunc_str(str(v).replace('`', r'\`'), mx=mx, replace='…')
+    tp = _trunc_str(str(v).replace('`', r'\`'), mx=mx, replace='…')
+    try: return ast.literal_eval(tp)
+    except Exception: return repr(tp).replace('\\\\', '\\')
 
 def mk_tr_details(tr, tc, mx=2000):
     "Create <details> block for tool call as JSON"
