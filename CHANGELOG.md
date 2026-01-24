@@ -2,6 +2,14 @@
 
 <!-- do not remove -->
 
+## 0.0.31
+
+### New Features
+
+- fix fm2thist and better usage display ([#94](https://github.com/AnswerDotAI/lisette/pull/94)), thanks to [@RensDimmendaal](https://github.com/RensDimmendaal)
+- Improve `final_prompt` to clarify tool access limit is per-turn only ([#88](https://github.com/AnswerDotAI/lisette/pull/88)), thanks to [@benreeve1984](https://github.com/benreeve1984)
+
+
 ## 0.0.30
 
 ### Bugs Squashed
