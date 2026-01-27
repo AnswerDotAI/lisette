@@ -51,4 +51,4 @@ jobs:
             git diff
             exit 1;
           fi
-          LITELLM_LOG=DEBUG nbdev_test --n_workers 0
+          LITELLM_LOG=DEBUG nbdev_test
