@@ -15,7 +15,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
 ]
-dependencies = []
+dependencies = ["litellm==1.80.11","numpydoc","toolslm","fastcore>=1.9.2"]
 
 [project.urls]
 Repository = "https://github.com/AnswerDotAI/lisette"
@@ -29,6 +29,9 @@ version = {attr = "lisette.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["lisette"]
+
+[project.optional-dependencies]
+dev = ["ipython","pycachy>=0.0.4","fastlite","nbdev","pillow"]
 
 [tool.nbdev]
 custom_sidebar = false
