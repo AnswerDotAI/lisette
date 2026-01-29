@@ -215,14 +215,15 @@ def mk_msgs(
     return res
 
 # %% ../nbs/00_core.ipynb #9ad6fc2c
-def stream_with_complete(gen, postproc=noop):
+@save_iter
+def stream_with_complete(self, gen, postproc=noop):
     "Extend streaming response chunks with the complete response"
     chunks = []
     for chunk in gen:
         chunks.append(chunk)
+        postproc(chunk)
         yield chunk
-    postproc(chunks)
-    return stream_chunk_builder(chunks)
+    self.value = stream_chunk_builder(chunks)
 
 # %% ../nbs/00_core.ipynb #4301402e
 def lite_mk_func(f):
@@ -386,9 +387,15 @@ def _handle_stop_reason(res):
 
 # %% ../nbs/00_core.ipynb #fa528e85
 @patch
-def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None, stream=False, max_steps=2, step=1, final_prompt=None, tool_choice=None, **kwargs):
-    "Internal method that always yields responses"
-    if step>max_steps: return
+def _precall(self:Chat, 
+            msg=None,          # Message str, or list of multiple message parts
+            prefill=None,      # Prefill AI response if model supports it
+            temp=None,         # Override temp set on chat initialization
+            think=None,        # Thinking (l,m,h)
+            search=None,       # Override search set on chat initialization (l,m,h)
+            stream=False,      # Stream results
+            tool_choice=None,  # limit tool calls to specified tools
+            **kwargs):
     try:
         model_info = get_model_info(self.model)
     except Exception:
@@ -400,59 +407,92 @@ def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None,
     if self.api_base: kwargs['api_base'] = self.api_base
     if self.api_key: kwargs['api_key'] = self.api_key
     if self.extra_headers: kwargs['extra_headers'] = self.extra_headers
-    res = completion(
-        model=self.model, messages=self._prep_msg(msg, prefill), stream=stream, 
-        tools=self.tool_schemas, reasoning_effort = effort.get(think), tool_choice=tool_choice,
+    kwargs['model'] = self.model
+    msg = self._prep_msg(msg, prefill)
+    return msg, prefill, dict(
+        # messages is still for completion  
+        stream=stream, 
+        tools=self.tool_schemas, 
+        reasoning_effort = effort.get(think), 
+        tool_choice=tool_choice,
         # temperature is not supported when reasoning
         temperature=None if think else ifnone(temp,self.temp),
         caching=self.cache and 'claude' not in self.model,
-        **kwargs)
-    if stream:
+        ) | kwargs 
+
+# %% ../nbs/00_core.ipynb #3580347d
+@patch
+@delegates(Chat._precall)
+def _call(self:Chat,
+    msg=None,     # Message str, or list of multiple message parts
+    step=1,       # Current step
+    max_steps=2,  # Maximum number of tool calls
+    final_prompt=_final_prompt, # Final prompt when tool calls have ran out
+    **kwargs):
+    "Internal method that always yields responses"
+    if step>max_steps+1: return # async max_steps+1, sync max_steps, using async
+    msgs, prefill, params = self._precall(msg=msg, **kwargs) # we need that once right?
+    res = completion(messages=msgs, **params)
+    if params.get('stream'):
         if prefill: yield _mk_prefill(prefill)
-        res = yield from stream_with_complete(res,postproc=cite_footnotes)
-    m = contents(res)
-    if prefill: m.content = prefill + m.content
-    self.hist.append(m)
+        res = stream_with_complete(res,postproc=cite_footnote) # note: singular
+        for chunk in res: yield chunk
+        res = res.value
+    m = self._hist_append(res, prefill)
     action, msg = _handle_stop_reason(res)
     if action == 'warning': add_warning(res, msg)
     elif action == 'retry':
-        yield from self._call(
-            None, prefill, temp, think, search, stream, max_steps, step,
-            final_prompt, tool_choice, **kwargs)
+        # prefill?
+        for result in self._call(step=step, max_steps=max_steps, final_prompt=final_prompt, **kwargs): yield result
         self.hist.pop(-2) # rm incomplete srvtoolu_
-        return
-    yield res
-    if tcs := _filter_srvtools(m.tool_calls):
-        tool_results=[_lite_call_func(tc, self.tool_schemas, self.ns, tc_res=self.tc_res) for tc in tcs]
+        return # why stop
+    yield res # yield final result
+    if (tool_results := self.run_tools(m, call=_lite_call_func)):
+        for t in tool_results: yield t
         self.hist+=tool_results
-        for r in tool_results: yield r
-        if step>=max_steps-1: prompt,tool_choice,search = final_prompt,'none',False
-        else: prompt = None
-        try: yield from self._call(
-            prompt, prefill, temp, think, search, stream, max_steps, step+1,
-            final_prompt, tool_choice, **kwargs)
+        kwargs |= _handle_max_steps(step, max_steps, final_prompt)
+        # what with prefill?
+        try:
+            for result in self._call(step=step+1, max_steps=max_steps, final_prompt=final_prompt, **kwargs): yield result
         except ContextWindowExceededError:
-            for t in tool_results:
-                if len(t['content'])>1000: t['content'] = _cwe_msg + _trunc_str(t['content'], mx=1000)
-            yield from self._call(None, prefill, temp, think, search, stream, max_steps, max_steps, final_prompt, 'none', **kwargs)
+            kwargs |= _handle_cwe(tool_results) # updates tool_results -> self.hist
+            # note msg=None sync, msg=prompt async, using async
+            for result in self._call(step=step+1, max_steps=max_steps, final_prompt=final_prompt, **kwargs): yield result
+
+# %% ../nbs/00_core.ipynb #4eb85eda
+@patch
+def _hist_append(self:Chat, res, prefill):
+    m = contents(res) 
+    if prefill: m.content = prefill + m.content
+    self.hist.append(m)
+    return m
+
+def _handle_max_steps(step, max_steps, final_prompt):
+    if step >= max_steps-1: 
+        return {'tool_choice': 'none', 'search':False, 'msg': final_prompt} 
+    return {'msg': None}
+    
+def _handle_cwe(tool_results):
+    for t in tool_results: 
+        if len(t['content'])>1000: t['content'] = _cwe_msg + _trunc_str(t['content'], mx=1000)
+    return {'tool_choice': 'none'}
+
+@patch
+def run_tools(self:Chat, m, call):
+    if tcs := _filter_srvtools(m.tool_calls):
+        return [call(tc, self.tool_schemas, self.ns, tc_res=self.tc_res) for tc in tcs]
 
 # %% ../nbs/00_core.ipynb #266f3d5d
 @patch
 @delegates(Chat._call)
-def __call__(self:Chat,
-             msg=None,          # Message str, or list of multiple message parts
-             prefill=None,      # Prefill AI response if model supports it
-             temp=None,         # Override temp set on chat initialization
-             think=None,        # Thinking (l,m,h)
-             search=None,       # Override search set on chat initialization (l,m,h)
-             stream=False,      # Stream results
-             max_steps=2, # Maximum number of tool calls
-             final_prompt=_final_prompt, # Final prompt when tool calls have ran out 
-             return_all=False,  # Returns all intermediate ModelResponses if not streaming and has tool calls
-             **kwargs):
+def __call__(
+    self:Chat,
+    msg=None,          # Message str, or list of multiple message parts
+    return_all=False,  # Returns all intermediate ModelResponses if not streaming and has tool calls
+    **kwargs):
     "Main call method - handles streaming vs non-streaming"
-    result_gen = self._call(msg, prefill, temp, think, search, stream, max_steps, 1, final_prompt, **kwargs)     
-    if stream: return result_gen              # streaming
+    result_gen = self._call(msg=msg, **kwargs)     
+    if kwargs.get('stream'): return result_gen # streaming
     elif return_all: return list(result_gen)  # toolloop behavior
     else: return last(result_gen)             # normal chat behavior
 
@@ -511,78 +551,57 @@ async def astream_with_complete(self, agen, postproc=noop):
 
 # %% ../nbs/00_core.ipynb #f354e37b
 class AsyncChat(Chat):
-    async def _call(self, msg=None, prefill=None, temp=None, think=None, search=None, stream=False, max_steps=2, step=1, final_prompt=None, tool_choice=None, **kwargs):
-        if step>max_steps+1: return
-        try:
-            model_info = get_model_info(self.model)
-        except Exception:
-            register_model({self.model: {}})
-            model_info = get_model_info(self.model)
-        if not model_info.get("supports_assistant_prefill"): prefill=None
-        if _has_search(self.model) and (s:=ifnone(search,self.search)): kwargs['web_search_options'] = {"search_context_size": effort[s]}
-        else: _=kwargs.pop('web_search_options',None)
-        res = await acompletion(model=self.model, messages=self._prep_msg(msg, prefill), stream=stream,
-                         tools=self.tool_schemas, reasoning_effort=effort.get(think), tool_choice=tool_choice,
-                         # temperature is not supported when reasoning
-                         temperature=None if think else ifnone(temp,self.temp), 
-                         caching=self.cache and 'claude' not in self.model,
-                         **kwargs)
-        if stream:
+    ...
+    @delegates(Chat._precall)
+    async def _call(self,
+        msg=None,     # Message str, or list of multiple message parts
+        step=1,       # Current step
+        max_steps=2,  # Maximum number of tool calls
+        final_prompt=_final_prompt, # Final prompt when tool calls have ran out
+        **kwargs):
+        "Internal method that always yields responses"
+        if step>max_steps+1: return # async max_steps+1, sync max_steps, using async
+        msgs, prefill, params = self._precall(msg=msg, **kwargs) # we need that once right?
+        res = await acompletion(messages=msgs, **params)
+        if params.get('stream'):
             if prefill: yield _mk_prefill(prefill)
-            res = astream_with_complete(res,postproc=cite_footnote)
+            res = astream_with_complete(res,postproc=cite_footnote) # note: singular
             async for chunk in res: yield chunk
             res = res.value
-        m=contents(res)
-        if prefill: m.content = prefill + m.content
-        self.hist.append(m)
+        m = self._hist_append(res, prefill)
         action, msg = _handle_stop_reason(res)
         if action == 'warning': add_warning(res, msg)
         elif action == 'retry':
-            async for result in self._call(
-                None, prefill, temp, think, search, stream, max_steps, step,
-                final_prompt, tool_choice, **kwargs): yield result
+            # prefill?
+            async for result in self._call(step=step, max_steps=max_steps, final_prompt=final_prompt, **kwargs): yield result
             self.hist.pop(-2) # rm incomplete srvtoolu_
-            return
-        yield res
-
-        if tcs := _filter_srvtools(m.tool_calls):
-            tool_results = []
-            for tc in tcs:
-                result = await _alite_call_func(tc, self.tool_schemas, self.ns, tc_res=self.tc_res)
-                tool_results.append(result)
-                yield result
+            return # why stop
+        yield res # yield final result
+        if (tool_results := self.run_tools(m, call=_alite_call_func)):
+            tool_results = await asyncio.gather(*tool_results)
+            for t in tool_results: yield t
             self.hist+=tool_results
-            if step>=max_steps-1: prompt,tool_choice,search = final_prompt,'none',False
-            else: prompt = None
+            kwargs |= _handle_max_steps(step, max_steps, final_prompt)
+            # what with prefill?
             try:
-                async for result in self._call(
-                    prompt, prefill, temp, think, search, stream, max_steps, step+1,
-                    final_prompt, tool_choice=tool_choice, **kwargs): yield result
+                async for result in self._call(step=step+1, max_steps=max_steps, final_prompt=final_prompt, **kwargs): yield result
             except ContextWindowExceededError:
-                for t in tool_results:
-                    if len(t['content'])>1000: t['content'] = _cwe_msg + _trunc_str(t['content'], mx=1000)
-                async for result in self._call(
-                    prompt, prefill, temp, think, search, stream, max_steps, step+1,
-                    final_prompt, tool_choice='none', **kwargs): yield result
+                kwargs |= _handle_cwe(tool_results) # updates tool_results -> self.hist
+                # note msg=None sync, msg=prompt async, using async
+                async for result in self._call(step=step+1, max_steps=max_steps, final_prompt=final_prompt, **kwargs): yield result
 
 # %% ../nbs/00_core.ipynb #9bc01816
 @patch
-@delegates(Chat._call)
+@delegates(AsyncChat._call)
 async def __call__(
     self:AsyncChat,
     msg=None,          # Message str, or list of multiple message parts
-    prefill=None,      # Prefill AI response if model supports it
-    temp=None,         # Override temp set on chat initialization
-    think=None,        # Thinking (l,m,h)
-    search=None,       # Override search set on chat initialization (l,m,h)
-    stream=False,      # Stream results
-    max_steps=2, # Maximum number of tool calls
-    final_prompt=_final_prompt, # Final prompt when tool calls have ran out 
     return_all=False,  # Returns all intermediate ModelResponses if not streaming and has tool calls
     **kwargs
 ):
-    result_gen = self._call(msg, prefill, temp, think, search, stream, max_steps, 1, final_prompt, **kwargs)
-    if stream or return_all: return result_gen
+    result_gen = self._call(msg, **kwargs)
+    if kwargs.get('stream') or return_all: return result_gen
+    
     async for res in result_gen: pass
     return res # normal chat behavior only return last msg
 
