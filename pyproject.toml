@@ -22,7 +22,7 @@ Documentation = "https://lisette.answer.ai/"
 lisette = "lisette._modidx:d"
 
 [project.optional-dependencies]
-dev = ['ipython', 'pycachy>=0.0.4', 'fastlite', 'nbdev', 'pillow']
+dev = ['ipython', 'pycachy>=0.0.6', 'fastlite', 'nbdev', 'pillow']
 
 [tool.setuptools.dynamic]
 version = {attr = "lisette.__version__"}
