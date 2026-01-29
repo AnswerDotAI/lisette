@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.33
+
+### New Features
+
+- Tool call ids and results referencing ([#97](https://github.com/AnswerDotAI/lisette/pull/97)), thanks to [@KeremTurgutlu](https://github.com/KeremTurgutlu)
+
+
 ## 0.0.31
 
 ### New Features
