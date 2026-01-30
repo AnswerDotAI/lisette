@@ -328,6 +328,10 @@ This is useful when chaining tools, e.g., reading data with one tool and passing
 
 # %% ../nbs/00_core.ipynb #a9ece479
 class Chat:
+    _completion = staticmethod(completion)
+    _stream = staticmethod(stream_with_complete)
+    _call_func = staticmethod(_lite_call_func)
+    
     def __init__(
         self,
         model:str,                # LiteLLM compatible model name 
@@ -432,32 +436,76 @@ def _call(self:Chat,
     "Internal method that always yields responses"
     if step>max_steps+1: return # async max_steps+1, sync max_steps, using async
     msgs, prefill, params = self._precall(msg=msg, **kwargs) # we need that once right?
-    res = completion(messages=msgs, **params)
+    res = yield 'completion', self._completion(messages=msgs, **params)
     if params.get('stream'):
         if prefill: yield _mk_prefill(prefill)
-        res = stream_with_complete(res,postproc=cite_footnote) # note: singular
-        for chunk in res: yield chunk
+        res = yield 'stream', self._stream(res,postproc=cite_footnote)
         res = res.value
     m = self._hist_append(res, prefill)
     action, msg = _handle_stop_reason(res)
     if action == 'warning': add_warning(res, msg)
     elif action == 'retry':
         # prefill?
-        for result in self._call(step=step, max_steps=max_steps, final_prompt=final_prompt, **kwargs): yield result
+        yield 'call', self._call(step=step, max_steps=max_steps, final_prompt=final_prompt, **kwargs)
         self.hist.pop(-2) # rm incomplete srvtoolu_
         return # why stop
-    yield res # yield final result
-    if (tool_results := self.run_tools(m, call=_lite_call_func)):
-        for t in tool_results: yield t
-        self.hist+=tool_results
+    res = yield 'result', res # yield final result
+    if (tool_results := self.run_tools(m)):
+        tool_results = yield 'tool_results', tool_results
+        self.hist += tool_results
         kwargs |= _handle_max_steps(step, max_steps, final_prompt)
         # what with prefill?
         try:
-            for result in self._call(step=step+1, max_steps=max_steps, final_prompt=final_prompt, **kwargs): yield result
+            result = yield 'call', self._call(step=step+1, max_steps=max_steps, final_prompt=final_prompt, **kwargs)
         except ContextWindowExceededError:
             kwargs |= _handle_cwe(tool_results) # updates tool_results -> self.hist
             # note msg=None sync, msg=prompt async, using async
-            for result in self._call(step=step+1, max_steps=max_steps, final_prompt=final_prompt, **kwargs): yield result
+            result = yield 'call', self._call(step=step+1, max_steps=max_steps, final_prompt=final_prompt, **kwargs)
+
+def _send(gen, value):
+    try: return gen.send(value)
+    except StopIteration as e:  return None
+
+def _flatmap_call(gen):
+    response = None
+    while (cmd := _send(gen, response)):
+        match cmd:
+            case 'completion',res:
+                response = res
+            case 'stream',res: 
+                for chunk in res: yield chunk
+                response = res
+            case 'call',res:
+                result = None
+                for result in _flatmap_call(res): yield result
+                response = result
+            case 'result',res:
+                yield res
+                response = res
+            case 'tool_results',res:
+                for t in res: yield t
+                response = res
+
+async def _aflatmap_call(gen):
+    response = None
+    while (cmd := _send(gen, response)):
+        match cmd:
+            case 'completion', res:
+                response = await res
+            case 'stream', res: 
+                async for chunk in res: yield chunk
+                response = res
+            case 'call', res:
+                result = None
+                async for result in _aflatmap_call(res): yield result
+                response = result
+            case 'result', res:
+                yield res
+                response = res
+            case 'tool_results', res:
+                res = await asyncio.gather(*res)
+                for t in res: yield t
+                response = res
 
 # %% ../nbs/00_core.ipynb #4eb85eda
 @patch
@@ -478,9 +526,9 @@ def _handle_cwe(tool_results):
     return {'tool_choice': 'none'}
 
 @patch
-def run_tools(self:Chat, m, call):
+def run_tools(self:Chat, m):
     if tcs := _filter_srvtools(m.tool_calls):
-        return [call(tc, self.tool_schemas, self.ns, tc_res=self.tc_res) for tc in tcs]
+        return [self._call_func(tc, self.tool_schemas, self.ns, tc_res=self.tc_res) for tc in tcs]
 
 # %% ../nbs/00_core.ipynb #266f3d5d
 @patch
@@ -491,7 +539,7 @@ def __call__(
     return_all=False,  # Returns all intermediate ModelResponses if not streaming and has tool calls
     **kwargs):
     "Main call method - handles streaming vs non-streaming"
-    result_gen = self._call(msg=msg, **kwargs)     
+    result_gen = _flatmap_call(self._call(msg=msg, **kwargs))
     if kwargs.get('stream'): return result_gen # streaming
     elif return_all: return list(result_gen)  # toolloop behavior
     else: return last(result_gen)             # normal chat behavior
@@ -551,44 +599,9 @@ async def astream_with_complete(self, agen, postproc=noop):
 
 # %% ../nbs/00_core.ipynb #f354e37b
 class AsyncChat(Chat):
-    ...
-    @delegates(Chat._precall)
-    async def _call(self,
-        msg=None,     # Message str, or list of multiple message parts
-        step=1,       # Current step
-        max_steps=2,  # Maximum number of tool calls
-        final_prompt=_final_prompt, # Final prompt when tool calls have ran out
-        **kwargs):
-        "Internal method that always yields responses"
-        if step>max_steps+1: return # async max_steps+1, sync max_steps, using async
-        msgs, prefill, params = self._precall(msg=msg, **kwargs) # we need that once right?
-        res = await acompletion(messages=msgs, **params)
-        if params.get('stream'):
-            if prefill: yield _mk_prefill(prefill)
-            res = astream_with_complete(res,postproc=cite_footnote) # note: singular
-            async for chunk in res: yield chunk
-            res = res.value
-        m = self._hist_append(res, prefill)
-        action, msg = _handle_stop_reason(res)
-        if action == 'warning': add_warning(res, msg)
-        elif action == 'retry':
-            # prefill?
-            async for result in self._call(step=step, max_steps=max_steps, final_prompt=final_prompt, **kwargs): yield result
-            self.hist.pop(-2) # rm incomplete srvtoolu_
-            return # why stop
-        yield res # yield final result
-        if (tool_results := self.run_tools(m, call=_alite_call_func)):
-            tool_results = await asyncio.gather(*tool_results)
-            for t in tool_results: yield t
-            self.hist+=tool_results
-            kwargs |= _handle_max_steps(step, max_steps, final_prompt)
-            # what with prefill?
-            try:
-                async for result in self._call(step=step+1, max_steps=max_steps, final_prompt=final_prompt, **kwargs): yield result
-            except ContextWindowExceededError:
-                kwargs |= _handle_cwe(tool_results) # updates tool_results -> self.hist
-                # note msg=None sync, msg=prompt async, using async
-                async for result in self._call(step=step+1, max_steps=max_steps, final_prompt=final_prompt, **kwargs): yield result
+    _completion = staticmethod(acompletion)
+    _stream = staticmethod(astream_with_complete)
+    _call_func = staticmethod(_alite_call_func)
 
 # %% ../nbs/00_core.ipynb #9bc01816
 @patch
@@ -599,7 +612,7 @@ async def __call__(
     return_all=False,  # Returns all intermediate ModelResponses if not streaming and has tool calls
     **kwargs
 ):
-    result_gen = self._call(msg, **kwargs)
+    result_gen = _aflatmap_call(self._call(msg, **kwargs))
     if kwargs.get('stream') or return_all: return result_gen
     
     async for res in result_gen: pass
