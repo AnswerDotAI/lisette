@@ -371,164 +371,145 @@ class Chat:
         pf = [{"role":"assistant","content":prefill}] if prefill else []
         return sp + self.hist + pf
 
-# %% ../nbs/00_core.ipynb #d356b12a
-def _filter_srvtools(tcs): return L(tcs).filter(lambda o: not o.id.startswith('srvtoolu_')) if tcs else None
+# %% ../nbs/00_core.ipynb #5db26c6e
+def _has_prefill(model):
+    try: info = get_model_info(model)
+    except Exception:
+        register_model({model: {}})
+        info = get_model_info(model)
+    return info.get("supports_assistant_prefill")
 
 # %% ../nbs/00_core.ipynb #d6644bc0
 def add_warning(r, msg):
     if contents(r).content: r.choices[0].message.content += f"\n\n<warning>{msg}</warning>"
     else: r.choices[0].message.content = f"<warning>{msg}</warning>"
 
-# %% ../nbs/00_core.ipynb #13476eca
-def _handle_stop_reason(res):
-    "Returns (action, warning_msg) - action is 'warning', 'pause', or None"
-    sr = stop_reason(res)
-    if sr == 'length': return 'warning', 'Response was cut off at token limit.'
-    if sr == 'refusal': return 'warning', 'AI was unable to process this request'
-    if sr == 'pause_turn': return 'retry', None
-    return None, None
-
-
-# %% ../nbs/00_core.ipynb #fa528e85
+# %% ../nbs/00_core.ipynb #edcc515f
 @patch
-def _precall(self:Chat, 
-            msg=None,          # Message str, or list of multiple message parts
-            prefill=None,      # Prefill AI response if model supports it
-            temp=None,         # Override temp set on chat initialization
-            think=None,        # Thinking (l,m,h)
-            search=None,       # Override search set on chat initialization (l,m,h)
-            stream=False,      # Stream results
-            tool_choice=None,  # limit tool calls to specified tools
-            **kwargs):
-    try:
-        model_info = get_model_info(self.model)
-    except Exception:
-        register_model({self.model: {}})
-        model_info = get_model_info(self.model)
-    if not model_info.get("supports_assistant_prefill"): prefill=None
+def run_tools(self:Chat, res):
+    "returns list of tool results or coros depending on _call_func"
+    tcs = L(contents(res).tool_calls or []).filter(lambda o: not o.id.startswith('srvtoolu_'))
+    if not tcs: return []
+    return [self._call_func(tc, self.tool_schemas, self.ns, tc_res=self.tc_res) for tc in tcs]
+
+# %% ../nbs/00_core.ipynb #df219bee
+@patch
+def _build_params(self:Chat, 
+    temp=None,         # Override temp set on chat initialization
+    think=None,        # Thinking (l,m,h)
+    search=None,       # Override search set on chat initialization (l,m,h)
+    stream=False,      # Stream results
+    tool_choice=None,  # limit tool calls to specified tools
+    **kwargs):
     if _has_search(self.model) and (s:=ifnone(search,self.search)): kwargs['web_search_options'] = {"search_context_size": effort[s]}
     else: _=kwargs.pop('web_search_options',None)
     if self.api_base: kwargs['api_base'] = self.api_base
     if self.api_key: kwargs['api_key'] = self.api_key
     if self.extra_headers: kwargs['extra_headers'] = self.extra_headers
-    kwargs['model'] = self.model
-    msg = self._prep_msg(msg, prefill)
-    return msg, prefill, dict(
-        # messages is still for completion  
+    return dict(
+        model=self.model,
         stream=stream, 
         tools=self.tool_schemas, 
-        reasoning_effort = effort.get(think), 
+        reasoning_effort=effort.get(think), 
         tool_choice=tool_choice,
-        # temperature is not supported when reasoning
-        temperature=None if think else ifnone(temp,self.temp),
-        caching=self.cache and 'claude' not in self.model,
-        ) | kwargs 
+        temperature=None if think else ifnone(temp,self.temp), # temperature is not supported when reasoning
+        caching=self.cache and 'claude' not in self.model
+        ) | kwargs
 
 # %% ../nbs/00_core.ipynb #3580347d
 @patch
-@delegates(Chat._precall)
-def _call(self:Chat,
-    msg=None,     # Message str, or list of multiple message parts
-    step=1,       # Current step
-    max_steps=2,  # Maximum number of tool calls
-    final_prompt=_final_prompt, # Final prompt when tool calls have ran out
-    **kwargs):
-    "Internal method that always yields responses"
-    if step>max_steps+1: return # async max_steps+1, sync max_steps, using async
-    msgs, prefill, params = self._precall(msg=msg, **kwargs) # we need that once right?
-    res = yield 'completion', self._completion(messages=msgs, **params)
-    if params.get('stream'):
+def _completion_n_stream(self:Chat, msg, prefill, stream, **params):
+    "Generate completion handling stream and prefill"
+    msgs = self._prep_msg(msg, prefill) 
+    params = {k:v for k,v in params.items() if v is not UNSET}
+    res = yield 'completion', self._completion(messages=msgs, stream=stream, **params)
+    if stream:
         if prefill: yield _mk_prefill(prefill)
         res = yield 'stream', self._stream(res,postproc=cite_footnote)
         res = res.value
-    m = self._hist_append(res, prefill)
-    action, msg = _handle_stop_reason(res)
-    if action == 'warning': add_warning(res, msg)
-    elif action == 'retry':
-        # prefill?
-        yield 'call', self._call(step=step, max_steps=max_steps, final_prompt=final_prompt, **kwargs)
-        self.hist.pop(-2) # rm incomplete srvtoolu_
-        return # why stop
-    res = yield 'result', res # yield final result
-    if (tool_results := self.run_tools(m)):
-        tool_results = yield 'tool_results', tool_results
+    if prefill: 
+        contents(res).content = prefill + (contents(res).content or "")
+    return res
+
+# %% ../nbs/00_core.ipynb #bfe47f7b
+@patch
+@delegates(Chat._build_params)
+def _call(self:Chat,
+    msg=None,     # Message str, or list of multiple message parts
+    prefill=None, # Prefill AI response if model supports it
+    max_steps=2,  # Maximum number of tool calls
+    final_prompt=_final_prompt, # Final prompt when tool calls have ran out
+    **kwargs):
+    "Run completion and yields commands for `_(a)flatmap_call` to yield `(a)sync` generators"
+    NO_TOOLS = {'tool_choice': 'none', 'web_search_options': UNSET}
+    prefill = prefill if _has_prefill(self.model) else None
+    params = self._build_params(**kwargs)
+    tool_results = []
+    for step in range(max_steps):
+        try: res = yield from self._completion_n_stream(msg, prefill, **params)
+        except ContextWindowExceededError as e:
+            if not tool_results: raise e
+            for t in tool_results: 
+                if len(t['content'])>1000: t['content'] = _cwe_msg + _trunc_str(t['content'], mx=1000)
+            res = yield from self._completion_n_stream(msg, prefill, **(params|NO_TOOLS))
+        self.hist.append(contents(res))
+        msg = prefill = None #diff: prefill wasn't reset in prev. code.
+        match stop_reason(res):
+            case 'length': add_warning(res, 'Response was cut off at token limit.')
+            case 'refusal'|'content_filter': add_warning(res,  'AI was unable to process this request')
+            case 'pause_turn': continue # diff:  .pop(-2) was removing prev servtoolu - not sure why
+            case 'tool_calls'|'stop'|'model_context_window_exceeded': pass 
+            case _ : pass # fix: should we log other stop_reasons?
+        res = yield 'result', res 
+        tool_results = yield 'tool_results', self.run_tools(res)
+        if not tool_results: break
         self.hist += tool_results
-        kwargs |= _handle_max_steps(step, max_steps, final_prompt)
-        # what with prefill?
-        try:
-            result = yield 'call', self._call(step=step+1, max_steps=max_steps, final_prompt=final_prompt, **kwargs)
-        except ContextWindowExceededError:
-            kwargs |= _handle_cwe(tool_results) # updates tool_results -> self.hist
-            # note msg=None sync, msg=prompt async, using async
-            result = yield 'call', self._call(step=step+1, max_steps=max_steps, final_prompt=final_prompt, **kwargs)
+    else: # no break, step == max_step
+        res = yield from self._completion_n_stream(final_prompt, None, **(params|NO_TOOLS))
+        self.hist.append(contents(res))
+        res = yield 'result', res
 
-def _send(gen, value):
-    try: return gen.send(value)
-    except StopIteration as e:  return None
+# %% ../nbs/00_core.ipynb #88d2387f
+def __call_as_sync(_call_gen):
+    "Chat._call adapter for sync context"
+    try:
+        response = None
+        while True:
+            cmd = _call_gen.send(response)
+            match cmd:
+                case 'completion',res:
+                    response = res
+                case 'stream',res: 
+                    for chunk in res: yield chunk
+                    response = res
+                case 'result',res:
+                    yield res
+                    response = res
+                case 'tool_results',res:
+                    for t in res: yield t
+                    response = res
+    except StopIteration: return
 
-def _flatmap_call(gen):
-    response = None
-    while (cmd := _send(gen, response)):
-        match cmd:
-            case 'completion',res:
-                response = res
-            case 'stream',res: 
-                for chunk in res: yield chunk
-                response = res
-            case 'call',res:
-                result = None
-                for result in _flatmap_call(res): yield result
-                response = result
-            case 'result',res:
-                yield res
-                response = res
-            case 'tool_results',res:
-                for t in res: yield t
-                response = res
-
-async def _aflatmap_call(gen):
-    response = None
-    while (cmd := _send(gen, response)):
-        match cmd:
-            case 'completion', res:
-                response = await res
-            case 'stream', res: 
-                async for chunk in res: yield chunk
-                response = res
-            case 'call', res:
-                result = None
-                async for result in _aflatmap_call(res): yield result
-                response = result
-            case 'result', res:
-                yield res
-                response = res
-            case 'tool_results', res:
-                res = await asyncio.gather(*res)
-                for t in res: yield t
-                response = res
-
-# %% ../nbs/00_core.ipynb #4eb85eda
-@patch
-def _hist_append(self:Chat, res, prefill):
-    m = contents(res) 
-    if prefill: m.content = prefill + m.content
-    self.hist.append(m)
-    return m
-
-def _handle_max_steps(step, max_steps, final_prompt):
-    if step >= max_steps-1: 
-        return {'tool_choice': 'none', 'search':False, 'msg': final_prompt} 
-    return {'msg': None}
-    
-def _handle_cwe(tool_results):
-    for t in tool_results: 
-        if len(t['content'])>1000: t['content'] = _cwe_msg + _trunc_str(t['content'], mx=1000)
-    return {'tool_choice': 'none'}
-
-@patch
-def run_tools(self:Chat, m):
-    if tcs := _filter_srvtools(m.tool_calls):
-        return [self._call_func(tc, self.tool_schemas, self.ns, tc_res=self.tc_res) for tc in tcs]
+async def __call_as_async(_call_gen):
+    "Chat._call adapter for async context"
+    try:
+        response = None
+        while True:
+            cmd = _call_gen.send(response)
+            match cmd:
+                case 'completion', res:
+                    response = await res
+                case 'stream', res: 
+                    async for chunk in res: yield chunk
+                    response = res
+                case 'result', res:
+                    yield res
+                    response = res
+                case 'tool_results', res:
+                    res = await asyncio.gather(*res)
+                    for t in res: yield t
+                    response = res
+    except StopIteration: return
 
 # %% ../nbs/00_core.ipynb #266f3d5d
 @patch
@@ -539,10 +520,17 @@ def __call__(
     return_all=False,  # Returns all intermediate ModelResponses if not streaming and has tool calls
     **kwargs):
     "Main call method - handles streaming vs non-streaming"
-    result_gen = _flatmap_call(self._call(msg=msg, **kwargs))
+    result_gen = __call_as_sync(self._call(msg=msg, **kwargs))
     if kwargs.get('stream'): return result_gen # streaming
     elif return_all: return list(result_gen)  # toolloop behavior
     else: return last(result_gen)             # normal chat behavior
+
+# %% ../nbs/00_core.ipynb #69419bb7
+@patch(as_prop=True)
+def cost(self: Chat):
+    "Total cost of all responses in conversation history"
+    return sum(getattr(r, '_hidden_params', {}).get('response_cost')  or 0
+               for r in self.h if hasattr(r, 'choices'))
 
 # %% ../nbs/00_core.ipynb #2e9247ba
 @patch
@@ -612,7 +600,7 @@ async def __call__(
     return_all=False,  # Returns all intermediate ModelResponses if not streaming and has tool calls
     **kwargs
 ):
-    result_gen = _aflatmap_call(self._call(msg, **kwargs))
+    result_gen = __call_as_async(self._call(msg, **kwargs))
     if kwargs.get('stream') or return_all: return result_gen
     
     async for res in result_gen: pass
