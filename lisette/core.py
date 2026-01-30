@@ -191,7 +191,7 @@ def fmt2hist(outp:str)->list:
 # %% ../nbs/00_core.ipynb #02cb84da
 def _apply_cache_idxs(msgs, cache_idxs=[-1], ttl=None):
     'Add cache control to idxs after filtering tools'
-    ms = L(msgs).filter(lambda m: not (m.get('tool_calls', []) or m['role'] == 'tool'))
+    ms = L(msgs).filter(lambda m: m['role'] != 'tool')
     for i in cache_idxs:
         try: _add_cache_control(ms[i], ttl)
         except IndexError: continue
@@ -362,7 +362,8 @@ class Chat:
             cache_idxs = L(self.cache_idxs).filter().map(lambda o: o-1 if o>0 else o)
         else:
             cache_idxs = self.cache_idxs
-        if msg: self.hist = mk_msgs(self.hist+[msg], self.cache and 'claude' in self.model, cache_idxs, self.ttl)
+        if msg: self.hist = self.hist+[msg]
+        self.hist = mk_msgs(self.hist, self.cache and 'claude' in self.model, cache_idxs, self.ttl)
         pf = [{"role":"assistant","content":prefill}] if prefill else []
         return sp + self.hist + pf
 
