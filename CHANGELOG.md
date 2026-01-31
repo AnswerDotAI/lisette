@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.34
+
+### Bugs Squashed
+
+- fix cache miss in tloop ([#103](https://github.com/AnswerDotAI/lisette/pull/103)), thanks to [@KeremTurgutlu](https://github.com/KeremTurgutlu)
+
+
 ## 0.0.33
 
 ### New Features
