@@ -247,7 +247,7 @@ _re_tool_ref = re.compile(r'^\$`([^`]+)`$')
 def _resolve_tool_refs(args_str, tc_res):
     "Resolve $`tool_call_id` references in tool arguments"
     d = json.loads(args_str)
-    if not tc_res: return d
+    if tc_res is None: return d
     for k,v in d.items():
         if isinstance(v, str) and (m := _re_tool_ref.match(v)):
             tcid = m.group(1)
@@ -262,7 +262,7 @@ def _try_eval(o):
     return o
 
 # %% ../nbs/00_core.ipynb #c4d81d05
-def _lite_call_func(tc, tool_schemas, ns, raise_on_err=True, tc_res=None):
+def _lite_call_func(tc, tool_schemas, ns, raise_on_err=True, tc_res=None, tc_res_eval=False):
     fn, valid = tc.function.name, {nested_idx(o,'function','name') for o in tool_schemas or []}
     if fn not in valid: res = f"Tool not defined in tool_schemas: {fn}"
     else:
@@ -271,7 +271,7 @@ def _lite_call_func(tc, tool_schemas, ns, raise_on_err=True, tc_res=None):
         else:
             res = call_func(fn, fargs, ns=ns)
             res = res.content if isinstance(res, ToolResponse) else res
-    if tc_res is not None: tc_res[tc.id] = _try_eval(res)
+    if tc_res is not None: tc_res[tc.id] = _try_eval(res) if tc_res_eval else res
     content = _prep_tool_res(res, tc.id) if tc_res is not None else str(res)
     return {"tool_call_id": tc.id, "role": "tool", "name": fn, "content": content}
 
@@ -350,6 +350,7 @@ class Chat:
         api_key=None,             # API key for custom providers
         extra_headers=None,       # Extra HTTP headers for custom providers
         tc_refs=False,            # Enable tool call result references
+        tc_res_eval=False,        # literal_eval tool results before storing in tc_res
     ):
         "LiteLLM chat client."
         self.model = model
@@ -431,7 +432,7 @@ def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None,
         return
     yield res
     if tcs := _filter_srvtools(m.tool_calls):
-        tool_results=[_lite_call_func(tc, self.tool_schemas, self.ns, tc_res=self.tc_res) for tc in tcs]
+        tool_results=[_lite_call_func(tc, self.tool_schemas, self.ns, tc_res=self.tc_res, tc_res_eval=self.tc_res_eval) for tc in tcs]
         self.hist+=tool_results
         for r in tool_results: yield r
         if step>=max_steps-1: prompt,tool_choice,search = final_prompt,'none',False
@@ -494,7 +495,7 @@ def mk_tc_result(tc, result): return {'tool_call_id': tc['id'], 'role': 'tool', 
 def mk_tc_results(tcq, results): return [mk_tc_result(a,b) for a,b in zip(tcq.tool_calls, results)]
 
 # %% ../nbs/00_core.ipynb #d934ac41
-async def _alite_call_func(tc, tool_schemas, ns, raise_on_err=True, tc_res=None):
+async def _alite_call_func(tc, tool_schemas, ns, raise_on_err=True, tc_res=None, tc_res_eval=False):
     fn, valid = tc.function.name, {nested_idx(o,'function','name') for o in tool_schemas or []}
     if fn not in valid: res = f"Tool not defined in tool_schemas: {fn}"
     else:
@@ -503,7 +504,7 @@ async def _alite_call_func(tc, tool_schemas, ns, raise_on_err=True, tc_res=None)
         else:
             res = await call_func_async(fn, fargs, ns=ns)
             res = res.content if isinstance(res, ToolResponse) else res
-    if tc_res is not None: tc_res[tc.id] = _try_eval(res)
+    if tc_res is not None: tc_res[tc.id] = _try_eval(res) if tc_res_eval else res
     content = _prep_tool_res(res, tc.id) if tc_res is not None else str(res)
     return {"tool_call_id": tc.id, "role": "tool", "name": fn, "content": content}
 
@@ -551,7 +552,7 @@ class AsyncChat(Chat):
         if tcs := _filter_srvtools(m.tool_calls):
             tool_results = []
             for tc in tcs:
-                result = await _alite_call_func(tc, self.tool_schemas, self.ns, tc_res=self.tc_res)
+                result = await _alite_call_func(tc, self.tool_schemas, self.ns, tc_res=self.tc_res, tc_res_eval=self.tc_res_eval)
                 tool_results.append(result)
                 yield result
             self.hist+=tool_results
