@@ -254,6 +254,13 @@ def _resolve_tool_refs(args_str, tc_res):
             d[k] = tc_res[tcid] if tcid in tc_res else f"Tool result '{tcid}' not found!"
     return d
 
+# %% ../nbs/00_core.ipynb #530f1e6a
+def _try_eval(o):
+    if isinstance(o, str):
+        try: return ast.literal_eval(o)
+        except: return o
+    return o
+
 # %% ../nbs/00_core.ipynb #c4d81d05
 def _lite_call_func(tc, tool_schemas, ns, raise_on_err=True, tc_res=None):
     fn, valid = tc.function.name, {nested_idx(o,'function','name') for o in tool_schemas or []}
@@ -264,7 +271,7 @@ def _lite_call_func(tc, tool_schemas, ns, raise_on_err=True, tc_res=None):
         else:
             res = call_func(fn, fargs, ns=ns)
             res = res.content if isinstance(res, ToolResponse) else res
-    if tc_res is not None: tc_res[tc.id] = res
+    if tc_res is not None: tc_res[tc.id] = _try_eval(res)
     content = _prep_tool_res(res, tc.id) if tc_res is not None else str(res)
     return {"tool_call_id": tc.id, "role": "tool", "name": fn, "content": content}
 
@@ -496,7 +503,7 @@ async def _alite_call_func(tc, tool_schemas, ns, raise_on_err=True, tc_res=None)
         else:
             res = await call_func_async(fn, fargs, ns=ns)
             res = res.content if isinstance(res, ToolResponse) else res
-    if tc_res is not None: tc_res[tc.id] = res
+    if tc_res is not None: tc_res[tc.id] = _try_eval(res)
     content = _prep_tool_res(res, tc.id) if tc_res is not None else str(res)
     return {"tool_call_id": tc.id, "role": "tool", "name": fn, "content": content}
 
