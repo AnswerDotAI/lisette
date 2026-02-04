@@ -108,20 +108,30 @@ def _bytes2content(data):
 def _add_cache_control(msg,          # LiteLLM formatted msg
                        ttl=None):    # Cache TTL: '5m' (default) or '1h'
     "cache `msg` with default time-to-live (ttl) of 5minutes ('5m'), but can be set to '1h'."
-    if isinstance(msg["content"], str): 
-        msg["content"] = [{"type": "text", "text": msg["content"]}]
-    cache_control = {"type": "ephemeral"}
-    if ttl is not None: cache_control["ttl"] = ttl
-    if isinstance(msg["content"], list) and msg["content"]:
-        msg["content"][-1]["cache_control"] = cache_control
+    cc = {"type": "ephemeral"} | ({"ttl": ttl} if ttl else {})
+    if tcs := msg.get('tool_calls'):
+        tcs[-1]['cache_control'] = cc
+        return msg
+    if not (content := msg.get("content")): return msg
+    if isinstance(content, str): msg["content"] = [{"type": "text", "text": content}]
+    if msg["content"] and msg["content"][-1].get("text"):
+        msg["content"][-1]["cache_control"] = cc
     return msg
 
 def _has_cache(msg):
-    return msg["content"] and isinstance(msg["content"], list) and ('cache_control' in msg["content"][-1])
+    "Check if msg has cache_control set"
+    if tcs := msg.get('tool_calls'): return 'cache_control' in tcs[-1]
+    content = msg.get("content")
+    return content and isinstance(content, list) and 'cache_control' in content[-1]
 
 def remove_cache_ckpts(msg):
     "remove cache checkpoints and return msg."
-    if _has_cache(msg): msg["content"][-1].pop('cache_control', None)
+    if not _has_cache(msg): return msg
+    if tcs := msg.get('tool_calls'):
+        tc = tcs[-1]
+        if isinstance(tc, dict): tc.pop('cache_control', None)
+        elif isinstance(tc, ChatCompletionMessageToolCall): delattr(tc, 'cache_control')
+    elif msg.get('content'): msg["content"][-1].pop('cache_control', None)
     return msg
 
 def _mk_content(o):
