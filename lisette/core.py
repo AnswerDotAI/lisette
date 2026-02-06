@@ -6,8 +6,8 @@
 __all__ = ['sonn45', 'opus45', 'opus46', 'tool_dtls_tag', 're_tools', 'token_dtls_tag', 're_token', 'effort', 'tc_res_sysp',
            'patch_litellm', 'remove_cache_ckpts', 'contents', 'stop_reason', 'mk_msg', 'fmt2hist', 'mk_msgs',
            'stream_with_complete', 'lite_mk_func', 'ToolResponse', 'structured', 'cite_footnote', 'cite_footnotes',
-           'Chat', 'add_warning', 'random_tool_id', 'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results',
-           'astream_with_complete', 'AsyncChat', 'mk_tr_details', 'fmt_usage', 'StreamFormatter',
+           'mk_stream_chunk', 'Chat', 'add_warning', 'random_tool_id', 'mk_tc', 'mk_tc_req', 'mk_tc_result',
+           'mk_tc_results', 'astream_with_complete', 'AsyncChat', 'mk_tr_details', 'fmt_usage', 'StreamFormatter',
            'AsyncStreamFormatter', 'display_stream', 'adisplay_stream']
 
 # %% ../nbs/00_core.ipynb #82380377
@@ -80,18 +80,7 @@ def _repr_markdown_(self: litellm.ModelResponse):
 </details>"""
 
 # %% ../nbs/00_core.ipynb #fac6cee5
-register_model({
-    "claude-opus-4-5": {
-        "litellm_provider": "anthropic", "mode": "chat",
-        "max_tokens": 64000, "max_input_tokens": 200000, "max_output_tokens": 64000,
-        "input_cost_per_token": 0.000005, "output_cost_per_token": 0.000025,
-        "cache_creation_input_token_cost": 0.000005*1.25, "cache_read_input_token_cost": 0.000005*0.1,
-        "supports_function_calling": True, "supports_parallel_function_calling": True,
-        "supports_vision": True, "supports_prompt_caching": True, "supports_response_schema": True,
-        "supports_system_messages": True, "supports_reasoning": True, "supports_assistant_prefill": True,
-        "supports_tool_choice": True, "supports_computer_use": True, "supports_web_search": True
-    }
-});
+litellm.register_model({'claude-opus-4-6': litellm.model_cost['claude-opus-4-5']})
 sonn45 = "claude-sonnet-4-5"
 opus45 = "claude-opus-4-5"
 opus46 = "claude-opus-4-6"
@@ -142,9 +131,11 @@ def _mk_content(o):
 
 def contents(r):
     "Get message object from response `r`."
+    if not r.choices: return ''
     return r.choices[0].message
 
 def stop_reason(r):
+    if not r.choices: return 'unk'
     return r.choices[0].finish_reason
 
 # %% ../nbs/00_core.ipynb #ecb67a0e
@@ -189,7 +180,7 @@ def fmt2hist(outp:str)->list:
     if tool_dtls_tag not in outp: return [outp]
     spt = re_tools.split(outp.strip())
     for is_last,(txt,_,tooljson) in loop_last(chunked(spt,3,pad=True)):
-        if is_last and not txt and not tooljson: continue
+        if is_last and not (txt or '').strip() and not tooljson: continue
         txt = txt.strip() if tooljson or txt.strip() else '.'
         hist.append(lm:=Message(txt))
         if tooljson:
@@ -197,12 +188,13 @@ def fmt2hist(outp:str)->list:
                 if not hist: hist.append(lm) # if LLM calls a tool without talking
                 lm.tool_calls = lm.tool_calls+[tcr[0]] if lm.tool_calls else [tcr[0]] 
                 hist.append(tcr[1])
+    if hist and isinstance(hist[-1], dict): hist.append(Message('.'))
     return hist
 
 # %% ../nbs/00_core.ipynb #02cb84da
 def _apply_cache_idxs(msgs, cache_idxs=[-1], ttl=None):
     'Add cache control to idxs after filtering tools'
-    ms = L(msgs).filter(lambda m: m['role'] != 'tool')
+    ms = [o for o in msgs if o['role']!='tool']
     for i in cache_idxs:
         try: _add_cache_control(ms[i], ttl)
         except IndexError: continue
@@ -319,7 +311,9 @@ def cite_footnotes(stream_list):
 effort = AttrDict({o[0]:o for o in ('low','medium','high')})
 
 # %% ../nbs/00_core.ipynb #715e9a83
-def _mk_prefill(pf): return ModelResponseStream([StreamingChoices(delta=Delta(content=pf,role='assistant'))])
+def mk_stream_chunk(**kwargs): return ModelResponseStream([StreamingChoices(delta=Delta(**kwargs))])
+def _mk_prefill(pf): return mk_stream_chunk(content=pf, role='assistant')
+
 
 # %% ../nbs/00_core.ipynb #f3ac31b4
 def _trunc_str(s, mx=2000, replace="<TRUNCATED>"):
@@ -404,24 +398,32 @@ def _handle_stop_reason(res):
     return None, None
 
 
-# %% ../nbs/00_core.ipynb #fa528e85
+# %% ../nbs/00_core.ipynb #4f58a3c9
 @patch
-def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None, stream=False, max_steps=2, step=1, final_prompt=None, tool_choice=None, **kwargs):
-    "Internal method that always yields responses"
-    if step>max_steps: return
-    try:
-        model_info = get_model_info(self.model)
+def _prep_call(self:Chat, prefill, search, max_tokens, kwargs):
+    "Prepare model info, prefill, search, and provider kwargs for a completion call"
+    try: model_info = get_model_info(self.model)
     except Exception:
         register_model({self.model: {}})
         model_info = get_model_info(self.model)
-    if not model_info.get("supports_assistant_prefill"): prefill=None
+    if max_tokens is None: max_tokens = model_info.get('max_output_tokens')
+    if not model_info.get("supports_assistant_prefill"): prefill = None
     if _has_search(self.model) and (s:=ifnone(search,self.search)): kwargs['web_search_options'] = {"search_context_size": effort[s]}
-    else: _=kwargs.pop('web_search_options',None)
+    else: kwargs.pop('web_search_options', None)
     if self.api_base: kwargs['api_base'] = self.api_base
     if self.api_key: kwargs['api_key'] = self.api_key
     if self.extra_headers: kwargs['extra_headers'] = self.extra_headers
+    return prefill, max_tokens
+
+# %% ../nbs/00_core.ipynb #fa528e85
+@patch
+def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None, stream=False,
+        max_steps=2, step=1, final_prompt=None, tool_choice=None, max_tokens=None, **kwargs):
+    "Internal method that always yields responses"
+    if step>max_steps+1: return
+    prefill, max_tokens = self._prep_call(prefill, search, max_tokens, kwargs)
     res = completion(
-        model=self.model, messages=self._prep_msg(msg, prefill), stream=stream, 
+        model=self.model, messages=self._prep_msg(msg, prefill), stream=stream, max_tokens=int(max_tokens),
         tools=self.tool_schemas, reasoning_effort = effort.get(think), tool_choice=tool_choice,
         # temperature is not supported when reasoning
         temperature=None if think else ifnone(temp,self.temp),
@@ -446,7 +448,7 @@ def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None,
         tool_results=[_lite_call_func(tc, self.tool_schemas, self.ns, tc_res=self.tc_res, tc_res_eval=self.tc_res_eval) for tc in tcs]
         self.hist+=tool_results
         for r in tool_results: yield r
-        if step>=max_steps-1: prompt,tool_choice,search = final_prompt,'none',False
+        if step>=max_steps: prompt,tool_choice,search = final_prompt,'none',False
         else: prompt = None
         try: yield from self._call(
             prompt, prefill, temp, think, search, stream, max_steps, step+1,
@@ -531,18 +533,12 @@ async def astream_with_complete(self, agen, postproc=noop):
 
 # %% ../nbs/00_core.ipynb #f354e37b
 class AsyncChat(Chat):
-    async def _call(self, msg=None, prefill=None, temp=None, think=None, search=None, stream=False, max_steps=2, step=1, final_prompt=None, tool_choice=None, **kwargs):
+    async def _call(self, msg=None, prefill=None, temp=None, think=None, search=None, stream=False, max_steps=2, step=1,
+            final_prompt=None, tool_choice=None, max_tokens=None, **kwargs):
         if step>max_steps+1: return
-        try:
-            model_info = get_model_info(self.model)
-        except Exception:
-            register_model({self.model: {}})
-            model_info = get_model_info(self.model)
-        if not model_info.get("supports_assistant_prefill"): prefill=None
-        if _has_search(self.model) and (s:=ifnone(search,self.search)): kwargs['web_search_options'] = {"search_context_size": effort[s]}
-        else: _=kwargs.pop('web_search_options',None)
+        prefill, max_tokens = self._prep_call(prefill, search, max_tokens, kwargs)
         res = await acompletion(model=self.model, messages=self._prep_msg(msg, prefill), stream=stream,
-                         tools=self.tool_schemas, reasoning_effort=effort.get(think), tool_choice=tool_choice,
+                         tools=self.tool_schemas, reasoning_effort=effort.get(think), tool_choice=tool_choice, max_tokens=int(max_tokens),
                          # temperature is not supported when reasoning
                          temperature=None if think else ifnone(temp,self.temp), 
                          caching=self.cache and 'claude' not in self.model,
@@ -637,8 +633,9 @@ def fmt_usage(u):
 
 # %% ../nbs/00_core.ipynb #89c788df
 class StreamFormatter:
-    def __init__(self, include_usage=False, mx=2000, debug=False):
-        self.outp,self.tcs,self.include_usage,self.mx,self.debug = '',{},include_usage,mx,debug
+    def __init__(self, include_usage=False, mx=2000, debug=False, showthink=False):
+        self.outp,self.tcs = '',{}
+        store_attr()
     
     def format_item(self, o):
         "Format a single item from the response stream."
@@ -647,6 +644,7 @@ class StreamFormatter:
         if isinstance(o, ModelResponseStream):
             d = o.choices[0].delta
             if nested_idx(d, 'reasoning_content') and d['reasoning_content']!='{"text": ""}':
+                if self.showthink: res += str(nested_idx(d, 'reasoning_content'))
                 res+= '🧠' if not self.outp or self.outp[-1]=='🧠' else '\n\n🧠' # gemini can interleave reasoning
             elif self.outp and self.outp[-1] == '🧠': res+= '\n\n'
             if c:=d.content: # gemini has text content in last reasoning chunk
