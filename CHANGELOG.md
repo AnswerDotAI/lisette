@@ -2,6 +2,19 @@
 
 <!-- do not remove -->
 
+## 0.0.35
+
+### New Features
+
+- Optionally `eval` string reprs when `tc_res=True` ([#105](https://github.com/AnswerDotAI/lisette/pull/105)), thanks to [@KeremTurgutlu](https://github.com/KeremTurgutlu)
+
+### Bugs Squashed
+
+- fix cache control in tool calls ([#107](https://github.com/AnswerDotAI/lisette/pull/107)), thanks to [@KeremTurgutlu](https://github.com/KeremTurgutlu)
+- Add `_try_eval` to convert kernel string reprs (e.g., `"'hello'"`) back to Python objects before storing in `tc_res` for tool call chaining. ([#104](https://github.com/AnswerDotAI/lisette/issues/104))
+- Fix AsyncChat to handle unmapped models (fixes #42) ([#100](https://github.com/AnswerDotAI/lisette/pull/100)), thanks to [@PiotrCzapla](https://github.com/PiotrCzapla)
+
+
 ## 0.0.34
 
 ### Bugs Squashed
