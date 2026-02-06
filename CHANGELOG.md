@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.36
+
+### Bugs Squashed
+
+- Refactor `_prep_call`, add `mk_stream_chunk` helper, fix `max_steps` loop logic, add empty choices guards ([#110](https://github.com/AnswerDotAI/lisette/issues/110))
+
+
 ## 0.0.35
 
 ### New Features
