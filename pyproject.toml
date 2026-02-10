@@ -7,12 +7,17 @@ name = "lisette"
 dynamic = ["version"]
 description = "litellm helper"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.12, <3.13"
 license = {text = "Apache-2.0"}
 authors = [{name = "AnswerDotAI", email = "support@answer.ai"}]
 keywords = ['nbdev', 'jupyter', 'notebook', 'python']
 classifiers = ["Natural Language :: English", "Intended Audience :: Developers", "Development Status :: 3 - Alpha", "Programming Language :: Python :: 3", "Programming Language :: Python :: 3 :: Only"]
-dependencies = ['litellm==1.80.11', 'numpydoc', 'toolslm', 'fastcore>=1.9.2']
+dependencies = [
+    'litellm~=1.80',
+    'numpydoc',
+    'toolslm',
+    'fastcore>=1.9.2'
+]
 
 [project.urls]
 Repository = "https://github.com/AnswerDotAI/lisette"
@@ -22,7 +27,16 @@ Documentation = "https://lisette.answer.ai/"
 lisette = "lisette._modidx:d"
 
 [project.optional-dependencies]
-dev = ['ipython', 'pycachy>=0.0.6', 'fastlite', 'nbdev', 'pillow']
+dev = [
+    "pip>=25.0",
+    'ipython',
+    'pycachy>=0.0.6',
+    'fastlite',
+    'nbdev',
+    'pillow',
+    "ipykernel>=6.29.5",
+    "jupyter>=1.1.1",
+]
 
 [tool.setuptools.dynamic]
 version = {attr = "lisette.__version__"}

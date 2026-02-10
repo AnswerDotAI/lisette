@@ -12,7 +12,7 @@ __all__ = ['sonn45', 'opus45', 'opus46', 'tool_dtls_tag', 're_tools', 'token_dtl
 
 # %% ../nbs/00_core.ipynb #82380377
 import asyncio, base64, json, litellm, mimetypes, random, string, ast
-from typing import Optional,Callable
+from typing import Any, Optional, Callable
 from html import escape
 from litellm import (acompletion, completion, stream_chunk_builder, Message,
                      ModelResponse, ModelResponseStream, get_model_info, register_model, Usage)
@@ -194,10 +194,13 @@ def fmt2hist(outp:str)->list:
 # %% ../nbs/00_core.ipynb #02cb84da
 def _apply_cache_idxs(msgs, cache_idxs=[-1], ttl=None):
     'Add cache control to idxs after filtering tools'
-    ms = [o for o in msgs if o['role']!='tool']
+    if (-1 not in cache_idxs) and (len(cache_idxs) > 0 and cache_idxs[-1] != 0):
+        cache_idxs = list(cache_idxs) + [-1]
     for i in cache_idxs:
-        try: _add_cache_control(ms[i], ttl)
-        except IndexError: continue
+        try:
+            lisette_core._add_cache_control(msgs[i], ttl)
+        except IndexError:
+            continue
 
 # %% ../nbs/00_core.ipynb #9b326d7d
 def mk_msgs(
@@ -400,13 +403,15 @@ def _handle_stop_reason(res):
 
 # %% ../nbs/00_core.ipynb #4f58a3c9
 @patch
-def _prep_call(self:Chat, prefill, search, max_tokens, kwargs):
+def _prep_call(self:Chat, prefill, search, max_tokens, kwargs) -> tuple[Any, Union[int, None]]:
     "Prepare model info, prefill, search, and provider kwargs for a completion call"
     try: model_info = get_model_info(self.model)
     except Exception:
         register_model({self.model: {}})
         model_info = get_model_info(self.model)
     if max_tokens is None: max_tokens = model_info.get('max_output_tokens')
+    if max_tokens is not None:
+        max_tokens = int(max_tokens)
     if not model_info.get("supports_assistant_prefill"): prefill = None
     if _has_search(self.model) and (s:=ifnone(search,self.search)): kwargs['web_search_options'] = {"search_context_size": effort[s]}
     else: kwargs.pop('web_search_options', None)
@@ -423,7 +428,7 @@ def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None,
     if step>max_steps+1: return
     prefill, max_tokens = self._prep_call(prefill, search, max_tokens, kwargs)
     res = completion(
-        model=self.model, messages=self._prep_msg(msg, prefill), stream=stream, max_tokens=int(max_tokens),
+        model=self.model, messages=self._prep_msg(msg, prefill), stream=stream, max_tokens=max_tokens,
         tools=self.tool_schemas, reasoning_effort = effort.get(think), tool_choice=tool_choice,
         # temperature is not supported when reasoning
         temperature=None if think else ifnone(temp,self.temp),
@@ -538,7 +543,7 @@ class AsyncChat(Chat):
         if step>max_steps+1: return
         prefill, max_tokens = self._prep_call(prefill, search, max_tokens, kwargs)
         res = await acompletion(model=self.model, messages=self._prep_msg(msg, prefill), stream=stream,
-                         tools=self.tool_schemas, reasoning_effort=effort.get(think), tool_choice=tool_choice, max_tokens=int(max_tokens),
+                         tools=self.tool_schemas, reasoning_effort=effort.get(think), tool_choice=tool_choice, max_tokens=max_tokens,
                          # temperature is not supported when reasoning
                          temperature=None if think else ifnone(temp,self.temp), 
                          caching=self.cache and 'claude' not in self.model,
