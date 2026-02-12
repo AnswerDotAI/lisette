@@ -264,19 +264,25 @@ def _try_eval(o):
         except: return o
     return o
 
+# %% ../nbs/00_core.ipynb #238576e5
+def _mk_tool_result(tc, res, tc_res=None, tc_res_eval=False):
+    "Unwrap `ToolResponse`, store result if needed, and format tool result message"
+    is_tr = isinstance(res, ToolResponse)
+    res = res.content if is_tr else res
+    if tc_res is not None: tc_res[tc.id] = _try_eval(res) if tc_res_eval else res
+    content = _prep_tool_res(res, tc.id) if tc_res is not None else (res if is_tr else str(res))
+    return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": content}
+
 # %% ../nbs/00_core.ipynb #c4d81d05
 def _lite_call_func(tc, tool_schemas, ns, raise_on_err=True, tc_res=None, tc_res_eval=False):
+    "Call tool function synchronously and return formatted result"
     fn, valid = tc.function.name, {nested_idx(o,'function','name') for o in tool_schemas or []}
     if fn not in valid: res = f"Tool not defined in tool_schemas: {fn}"
     else:
         try: fargs = _resolve_tool_refs(tc.function.arguments, tc_res)
         except json.JSONDecodeError: res = f"Failed to parse function arguments: {tc.function.arguments}"
-        else:
-            res = call_func(fn, fargs, ns=ns)
-            res = res.content if isinstance(res, ToolResponse) else res
-    if tc_res is not None: tc_res[tc.id] = _try_eval(res) if tc_res_eval else res
-    content = _prep_tool_res(res, tc.id) if tc_res is not None else str(res)
-    return {"tool_call_id": tc.id, "role": "tool", "name": fn, "content": content}
+        else: res = call_func(fn, fargs, ns=ns)
+    return _mk_tool_result(tc, res, tc_res, tc_res_eval)
 
 # %% ../nbs/00_core.ipynb #4688cf77
 @delegates(completion)
@@ -509,17 +515,14 @@ def mk_tc_results(tcq, results): return [mk_tc_result(a,b) for a,b in zip(tcq.to
 
 # %% ../nbs/00_core.ipynb #d934ac41
 async def _alite_call_func(tc, tool_schemas, ns, raise_on_err=True, tc_res=None, tc_res_eval=False):
+    "Call tool function asynchronously and return formatted result"
     fn, valid = tc.function.name, {nested_idx(o,'function','name') for o in tool_schemas or []}
     if fn not in valid: res = f"Tool not defined in tool_schemas: {fn}"
     else:
         try: fargs = _resolve_tool_refs(tc.function.arguments, tc_res)
         except json.JSONDecodeError: res = f"Failed to parse function arguments: {tc.function.arguments}"
-        else:
-            res = await call_func_async(fn, fargs, ns=ns)
-            res = res.content if isinstance(res, ToolResponse) else res
-    if tc_res is not None: tc_res[tc.id] = _try_eval(res) if tc_res_eval else res
-    content = _prep_tool_res(res, tc.id) if tc_res is not None else str(res)
-    return {"tool_call_id": tc.id, "role": "tool", "name": fn, "content": content}
+        else: res = await call_func_async(fn, fargs, ns=ns)
+    return _mk_tool_result(tc, res, tc_res, tc_res_eval)
 
 # %% ../nbs/00_core.ipynb #13cf1122
 @asave_iter
