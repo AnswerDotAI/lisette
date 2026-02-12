@@ -198,7 +198,7 @@ def _apply_cache_idxs(msgs, cache_idxs=[-1], ttl=None):
         cache_idxs = list(cache_idxs) + [-1]
     for i in cache_idxs:
         try:
-            lisette_core._add_cache_control(msgs[i], ttl)
+            _add_cache_control(msgs[i], ttl)
         except IndexError:
             continue
 
