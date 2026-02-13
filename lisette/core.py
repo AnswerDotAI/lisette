@@ -451,7 +451,8 @@ def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None,
         return
     yield res
     if tcs := _filter_srvtools(m.tool_calls):
-        tool_results=[_lite_call_func(tc, self.tool_schemas, self.ns, tc_res=self.tc_res, tc_res_eval=self.tc_res_eval) for tc in tcs]
+        _f = partial(_lite_call_func, tool_schemas=self.tool_schemas, ns=self.ns, tc_res=self.tc_res, tc_res_eval=self.tc_res_eval)
+        tool_results=list(parallel(_f, tcs, threadpool=True, n_workers=len(tcs)))
         self.hist+=tool_results
         for r in tool_results: yield r
         if step>=max_steps: prompt,tool_choice,search = final_prompt,'none',False
@@ -565,11 +566,9 @@ class AsyncChat(Chat):
         yield res
 
         if tcs := _filter_srvtools(m.tool_calls):
-            tool_results = []
-            for tc in tcs:
-                result = await _alite_call_func(tc, self.tool_schemas, self.ns, tc_res=self.tc_res, tc_res_eval=self.tc_res_eval)
-                tool_results.append(result)
-                yield result
+            tool_results = await asyncio.gather(*[
+                _alite_call_func(tc, self.tool_schemas, self.ns, tc_res=self.tc_res, tc_res_eval=self.tc_res_eval) for tc in tcs])
+            for r in tool_results: yield r
             self.hist+=tool_results
             if step>=max_steps-1: prompt,tool_choice,search = final_prompt,'none',False
             else: prompt = None
