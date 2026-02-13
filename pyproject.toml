@@ -12,7 +12,7 @@ license = {text = "Apache-2.0"}
 authors = [{name = "AnswerDotAI", email = "support@answer.ai"}]
 keywords = ['nbdev', 'jupyter', 'notebook', 'python']
 classifiers = ["Natural Language :: English", "Intended Audience :: Developers", "Development Status :: 3 - Alpha", "Programming Language :: Python :: 3", "Programming Language :: Python :: 3 :: Only"]
-dependencies = ['litellm==1.80.11', 'numpydoc', 'toolslm', 'fastcore>=1.9.2']
+dependencies = ['litellm', 'numpydoc', 'toolslm>=0.3.29', 'fastcore>=1.9.2']
 
 [project.urls]
 Repository = "https://github.com/AnswerDotAI/lisette"

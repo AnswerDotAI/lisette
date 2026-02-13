@@ -80,7 +80,6 @@ def _repr_markdown_(self: litellm.ModelResponse):
 </details>"""
 
 # %% ../nbs/00_core.ipynb #fac6cee5
-litellm.register_model({'claude-opus-4-6': litellm.model_cost['claude-opus-4-5']})
 sonn45 = "claude-sonnet-4-5"
 opus45 = "claude-opus-4-5"
 opus46 = "claude-opus-4-6"
