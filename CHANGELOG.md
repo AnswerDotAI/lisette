@@ -2,6 +2,19 @@
 
 <!-- do not remove -->
 
+## 0.0.37
+
+### New Features
+
+- Update to latest litellm ([#119](https://github.com/AnswerDotAI/lisette/issues/119))
+- Return tool errors to LLM ([#118](https://github.com/AnswerDotAI/lisette/issues/118))
+- make parallel tool calls parallel ([#112](https://github.com/AnswerDotAI/lisette/issues/112))
+
+### Bugs Squashed
+
+- Fix `ToolResponse` content being stringified when `tc_res` is `None` ([#116](https://github.com/AnswerDotAI/lisette/pull/116)), thanks to [@KeremTurgutlu](https://github.com/KeremTurgutlu)
+
+
 ## 0.0.36
 
 ### Bugs Squashed
