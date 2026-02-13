@@ -281,7 +281,7 @@ def _lite_call_func(tc, tool_schemas, ns, raise_on_err=True, tc_res=None, tc_res
     else:
         try: fargs = _resolve_tool_refs(tc.function.arguments, tc_res)
         except json.JSONDecodeError: res = f"Failed to parse function arguments: {tc.function.arguments}"
-        else: res = call_func(fn, fargs, ns=ns)
+        else: res = call_func(fn, fargs, ns=ns, raise_on_err=False)
     return _mk_tool_result(tc, res, tc_res, tc_res_eval)
 
 # %% ../nbs/00_core.ipynb #4688cf77
@@ -452,7 +452,8 @@ def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None,
     yield res
     if tcs := _filter_srvtools(m.tool_calls):
         _f = partial(_lite_call_func, tool_schemas=self.tool_schemas, ns=self.ns, tc_res=self.tc_res, tc_res_eval=self.tc_res_eval)
-        tool_results=list(parallel(_f, tcs, threadpool=True, n_workers=len(tcs)))
+        workers = min(len(tcs),8) if len(tcs)>1 else 0 # not parallel if 1 call
+        tool_results=list(parallel(_f, tcs, threadpool=True, n_workers=workers))
         self.hist+=tool_results
         for r in tool_results: yield r
         if step>=max_steps: prompt,tool_choice,search = final_prompt,'none',False
@@ -522,7 +523,7 @@ async def _alite_call_func(tc, tool_schemas, ns, raise_on_err=True, tc_res=None,
     else:
         try: fargs = _resolve_tool_refs(tc.function.arguments, tc_res)
         except json.JSONDecodeError: res = f"Failed to parse function arguments: {tc.function.arguments}"
-        else: res = await call_func_async(fn, fargs, ns=ns)
+        else: res = await call_func_async(fn, fargs, ns=ns, raise_on_err=False)
     return _mk_tool_result(tc, res, tc_res, tc_res_eval)
 
 # %% ../nbs/00_core.ipynb #13cf1122
