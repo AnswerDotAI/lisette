@@ -321,15 +321,15 @@ def _mk_prefill(pf): return mk_stream_chunk(content=pf, role='assistant')
 
 
 # %% ../nbs/00_core.ipynb #f3ac31b4
-def _trunc_str(s, mx=2000, replace="<TRUNCATED>"):
+def _trunc_str(s, mx=2000, replace="TRUNCATED"):
     "Truncate `s` to `mx` chars max, adding `replace` if truncated"
     s = str(s).strip()
     if len(s)<=mx: return s
-    s = s[:mx]
+    s = s[10:mx-10]
     ss = s.split(' ')
     if len(ss[-1])>50: ss[-1] = ss[-1][:5]
     s = ' '.join(ss)
-    return s+replace
+    return f"<{replace}>…{s}…</{replace}>"
 
 # %% ../nbs/00_core.ipynb #e18e226c
 _final_prompt = dict(role="user", content="You have used all your tool calls for this turn. Please summarize your findings. If you did not complete your goal, tell the user what further work is needed. You may use tools again on the next user message.")
