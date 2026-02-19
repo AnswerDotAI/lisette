@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.38
+
+### New Features
+
+- Add Sonnet 4.6 ([#120](https://github.com/AnswerDotAI/lisette/issues/120))
+
+
 ## 0.0.37
 
 ### New Features
