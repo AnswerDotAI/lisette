@@ -454,7 +454,7 @@ def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None,
     yield res
     if tcs := _filter_srvtools(m.tool_calls):
         _f = partial(_lite_call_func, tool_schemas=self.tool_schemas, ns=self.ns, tc_res=self.tc_res, tc_res_eval=self.tc_res_eval)
-        workers = min(len(tcs),8) if len(tcs)>1 else 0 # not parallel if 1 call
+        workers = min(len(tcs),8) if len(tcs)>1 and getattr(self.ns, 'parallel', True) else 0 # not parallel if 1 call or ns opts out
         tool_results=list(parallel(_f, tcs, threadpool=True, n_workers=workers))
         self.hist+=tool_results
         for r in tool_results: yield r
@@ -569,8 +569,11 @@ class AsyncChat(Chat):
         yield res
 
         if tcs := _filter_srvtools(m.tool_calls):
-            tool_results = await asyncio.gather(*[
-                _alite_call_func(tc, self.tool_schemas, self.ns, tc_res=self.tc_res, tc_res_eval=self.tc_res_eval) for tc in tcs])
+            _kw = dict(tool_schemas=self.tool_schemas, ns=self.ns, tc_res=self.tc_res, tc_res_eval=self.tc_res_eval)
+            if len(tcs)>1 and getattr(self.ns, 'parallel', True):
+                tool_results = await asyncio.gather(*[_alite_call_func(tc, **_kw) for tc in tcs])
+            else:
+                tool_results = [await _alite_call_func(tc, **_kw) for tc in tcs]
             for r in tool_results: yield r
             self.hist+=tool_results
             if step>=max_steps-1: prompt,tool_choice,search = final_prompt,'none',False
