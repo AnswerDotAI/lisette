@@ -46,11 +46,11 @@ def patch_litellm(seed=0):
         res = b64encode(UUID(int=random.getrandbits(128), version=4).bytes)
         return '_' + res.decode().rstrip('=').translate(str.maketrans('+/', '__'))  # both to underscore for srvtoolu_ pattern
 
-    @patch
-    def __init__(self: ChatCompletionMessageToolCall, function=None, id=None, type="function", **kwargs):
-        # we keep the tool call prefix if it exists, this is needed for example to handle srvtoolu_ correctly.
-        id = id.split('_')[0]+_unqid() if id and '_' in id else id
-        self._orig___init__(function=function, id=id, type=type, **kwargs)
+    # @patch
+    # def __init__(self: ChatCompletionMessageToolCall, function=None, id=None, type="function", **kwargs):
+    #     # we keep the tool call prefix if it exists, this is needed for example to handle srvtoolu_ correctly.
+    #     id = id.split('_')[0]+_unqid() if id and '_' in id else id
+    #     self._orig___init__(function=function, id=id, type=type, **kwargs)
 
 # %% ../nbs/00_core.ipynb #d61cf441
 @patch
@@ -148,6 +148,7 @@ def mk_msg(
     ttl=None      # Cache TTL: '5m' (default) or '1h'
 ):
     "Create a LiteLLM compatible message."
+    if content is None: return None
     if isinstance(content, dict) or isinstance(content, Message): return content
     if isinstance(content, ModelResponse): return contents(content)
     if isinstance(content, list) and len(content) == 1 and isinstance(content[0], str): c = content[0]
@@ -275,15 +276,20 @@ def _mk_tool_result(tc, res, tc_res=None, tc_res_eval=False):
     content = _prep_tool_res(res, tc.id) if tc_res is not None else (res if is_tr else str(res))
     return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": content}
 
-# %% ../nbs/00_core.ipynb #c4d81d05
-def _lite_call_func(tc, tool_schemas, ns, raise_on_err=True, tc_res=None, tc_res_eval=False):
+# %% ../nbs/00_core.ipynb #468a19d4
+def _call_func(tc, tool_schemas, ns, callf, tc_res=None):
     "Call tool function synchronously and return formatted result"
     fn, valid = tc.function.name, {nested_idx(o,'function','name') for o in tool_schemas or []}
-    if fn not in valid: res = f"Tool not defined in tool_schemas: {fn}"
+    if fn not in valid: return f"Tool not defined in tool_schemas: {fn}"
     else:
         try: fargs = _resolve_tool_refs(tc.function.arguments, tc_res)
-        except json.JSONDecodeError: res = f"Failed to parse function arguments: {tc.function.arguments}"
-        else: res = call_func(fn, fargs, ns=ns, raise_on_err=False)
+        except json.JSONDecodeError: return f"Failed to parse function arguments: {tc.function.arguments}"
+        else: return callf(fn, fargs, ns=ns, raise_on_err=False)
+
+# %% ../nbs/00_core.ipynb #f4b5fcc4
+def _lite_call_func(tc, tool_schemas, ns, tc_res=None, tc_res_eval=False):
+    "Call tool function synchronously and return formatted result"
+    res = _call_func(tc, tool_schemas, ns, call_func, tc_res=tc_res)
     return _mk_tool_result(tc, res, tc_res, tc_res_eval)
 
 # %% ../nbs/00_core.ipynb #4688cf77
@@ -387,6 +393,9 @@ class Chat:
         self.hist = mk_msgs(self.hist, self.cache and 'claude' in self.model, cache_idxs, self.ttl)
         pf = [{"role":"assistant","content":prefill}] if prefill else []
         return sp + self.hist + pf
+    
+    @property
+    def tcdict(self): return dict(tool_schemas=self.tool_schemas, ns=self.ns, tc_res=self.tc_res, tc_res_eval=self.tc_res_eval)
 
 # %% ../nbs/00_core.ipynb #d356b12a
 def _filter_srvtools(tcs): return L(tcs).filter(lambda o: not o.id.startswith('srvtoolu_')) if tcs else None
@@ -432,7 +441,7 @@ def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None,
     prefill, max_tokens = self._prep_call(prefill, search, max_tokens, kwargs)
     res = completion(
         model=self.model, messages=self._prep_msg(msg, prefill), stream=stream, max_tokens=int(max_tokens),
-        tools=self.tool_schemas, reasoning_effort = effort.get(think), tool_choice=tool_choice,
+        tools=self.tool_schemas, reasoning_effort = effort.get(think), tool_choice=tool_choice, num_retries=2,
         # temperature is not supported when reasoning
         temperature=None if think else ifnone(temp,self.temp),
         caching=self.cache and 'claude' not in self.model,
@@ -453,12 +462,11 @@ def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None,
         return
     yield res
     if tcs := _filter_srvtools(m.tool_calls):
-        _f = partial(_lite_call_func, tool_schemas=self.tool_schemas, ns=self.ns, tc_res=self.tc_res, tc_res_eval=self.tc_res_eval)
-        workers = min(len(tcs),8) if len(tcs)>1 else 0 # not parallel if 1 call
-        tool_results=list(parallel(_f, tcs, threadpool=True, n_workers=workers))
+        tool_results=[_lite_call_func(o, **self.tcdict)
+            for o in tcs]
         self.hist+=tool_results
         for r in tool_results: yield r
-        if step>=max_steps: prompt,tool_choice,search = final_prompt,'none',False
+        if step>=max_steps: prompt,tool_choice,search = mk_msg(final_prompt),'none',False
         else: prompt = None
         try: yield from self._call(
             prompt, prefill, temp, think, search, stream, max_steps, step+1,
@@ -517,15 +525,11 @@ def mk_tc_result(tc, result): return {'tool_call_id': tc['id'], 'role': 'tool', 
 # %% ../nbs/00_core.ipynb #e5d8e695
 def mk_tc_results(tcq, results): return [mk_tc_result(a,b) for a,b in zip(tcq.tool_calls, results)]
 
-# %% ../nbs/00_core.ipynb #d934ac41
-async def _alite_call_func(tc, tool_schemas, ns, raise_on_err=True, tc_res=None, tc_res_eval=False):
+# %% ../nbs/00_core.ipynb #bb3811e0
+async def _alite_call_func(tc, tool_schemas, ns, tc_res=None, tc_res_eval=False):
     "Call tool function asynchronously and return formatted result"
-    fn, valid = tc.function.name, {nested_idx(o,'function','name') for o in tool_schemas or []}
-    if fn not in valid: res = f"Tool not defined in tool_schemas: {fn}"
-    else:
-        try: fargs = _resolve_tool_refs(tc.function.arguments, tc_res)
-        except json.JSONDecodeError: res = f"Failed to parse function arguments: {tc.function.arguments}"
-        else: res = await call_func_async(fn, fargs, ns=ns, raise_on_err=False)
+    res = _call_func(tc, tool_schemas, ns, call_func_async, tc_res=tc_res)
+    res = await maybe_await(res)
     return _mk_tool_result(tc, res, tc_res, tc_res_eval)
 
 # %% ../nbs/00_core.ipynb #13cf1122
@@ -541,10 +545,10 @@ async def astream_with_complete(self, agen, postproc=noop):
 # %% ../nbs/00_core.ipynb #f354e37b
 class AsyncChat(Chat):
     async def _call(self, msg=None, prefill=None, temp=None, think=None, search=None, stream=False, max_steps=2, step=1,
-            final_prompt=None, tool_choice=None, max_tokens=None, **kwargs):
+            final_prompt=None, tool_choice=None, max_tokens=None, n_workers=8, tc_timeout=7200, **kwargs):
         if step>max_steps+1: return
         prefill, max_tokens = self._prep_call(prefill, search, max_tokens, kwargs)
-        res = await acompletion(model=self.model, messages=self._prep_msg(msg, prefill), stream=stream,
+        res = await acompletion(model=self.model, messages=self._prep_msg(msg, prefill), stream=stream, num_retries=2,
                          tools=self.tool_schemas, reasoning_effort=effort.get(think), tool_choice=tool_choice, max_tokens=int(max_tokens),
                          # temperature is not supported when reasoning
                          temperature=None if think else ifnone(temp,self.temp), 
@@ -569,11 +573,10 @@ class AsyncChat(Chat):
         yield res
 
         if tcs := _filter_srvtools(m.tool_calls):
-            tool_results = await asyncio.gather(*[
-                _alite_call_func(tc, self.tool_schemas, self.ns, tc_res=self.tc_res, tc_res_eval=self.tc_res_eval) for tc in tcs])
+            tool_results = await parallel_async(_alite_call_func, tcs, timeout=tc_timeout, n_workers=n_workers, **self.tcdict)
             for r in tool_results: yield r
             self.hist+=tool_results
-            if step>=max_steps-1: prompt,tool_choice,search = final_prompt,'none',False
+            if step>=max_steps-1: prompt,tool_choice,search = mk_msg(final_prompt),'none',False
             else: prompt = None
             try:
                 async for result in self._call(
