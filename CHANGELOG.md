@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.39
+
+### New Features
+
+- Refactor tool calling: extract shared `_call_func` helper, add tcdict property, use `parallel_async`, and add `num_retries` ([#123](https://github.com/AnswerDotAI/lisette/issues/123))
+
+
 ## 0.0.38
 
 ### New Features
