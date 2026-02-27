@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.40
+
+### New Features
+
+- Limit opus max tokens ([#124](https://github.com/AnswerDotAI/lisette/issues/124))
+
+
 ## 0.0.39
 
 ### New Features
