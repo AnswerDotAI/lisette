@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.41
+
+### Bugs Squashed
+
+- Fix `srvtoolu_` id handling, cache index mutation, and retry history ordering ([#125](https://github.com/AnswerDotAI/lisette/issues/125))
+
+
 ## 0.0.40
 
 ### New Features
