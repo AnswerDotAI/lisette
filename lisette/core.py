@@ -46,11 +46,11 @@ def patch_litellm(seed=0):
         res = b64encode(UUID(int=random.getrandbits(128), version=4).bytes)
         return '_' + res.decode().rstrip('=').translate(str.maketrans('+/', '__'))  # both to underscore for srvtoolu_ pattern
 
-    # @patch
-    # def __init__(self: ChatCompletionMessageToolCall, function=None, id=None, type="function", **kwargs):
-    #     # we keep the tool call prefix if it exists, this is needed for example to handle srvtoolu_ correctly.
-    #     id = id.split('_')[0]+_unqid() if id and '_' in id else id
-    #     self._orig___init__(function=function, id=id, type=type, **kwargs)
+    @patch
+    def __init__(self: ChatCompletionMessageToolCall, function=None, id=None, type="function", **kwargs):
+        # we keep the tool call prefix if it exists, this is needed for example to handle srvtoolu_ correctly.
+        if id and 'srvtoolu_' in id: id = id.split('_')[0]+_unqid()
+        self._orig___init__(function=function, id=id, type=type, **kwargs)
 
 # %% ../nbs/00_core.ipynb #d61cf441
 @patch
@@ -204,10 +204,14 @@ def fmt2hist(outp:str)->list:
 # %% ../nbs/00_core.ipynb #02cb84da
 def _apply_cache_idxs(msgs, cache_idxs=[-1], ttl=None):
     'Add cache control to idxs after filtering tools'
-    ms = [o for o in msgs if o['role']!='tool']
+    ms = [j for j,o in enumerate(msgs) if o['role']!='tool']
     for i in cache_idxs:
-        try: _add_cache_control(ms[i], ttl)
+        try: idx = ms[i]
         except IndexError: continue
+        m = msgs[idx]
+        if isinstance(m, Message): m = msgs[idx] = dict(m)
+        _add_cache_control(m, ttl)
+
 
 # %% ../nbs/00_core.ipynb #9b326d7d
 def mk_msgs(
@@ -462,10 +466,10 @@ def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None,
     action, msg = _handle_stop_reason(res)
     if action == 'warning': add_warning(res, msg)
     elif action == 'retry':
+        self.hist.pop()
         yield from self._call(
             None, prefill, temp, think, search, stream, max_steps, step,
             final_prompt, tool_choice, **kwargs)
-        self.hist.pop(-2) # rm incomplete srvtoolu_
         return
     yield res
     if tcs := _filter_srvtools(m.tool_calls):
