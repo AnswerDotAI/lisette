@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.42
+
+### New Features
+
+- Increase max before trunc for input ([#126](https://github.com/AnswerDotAI/lisette/issues/126))
+
+
 ## 0.0.41
 
 ### Bugs Squashed
