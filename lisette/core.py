@@ -630,7 +630,7 @@ def _trunc_param(v, mx=50):
 
 def mk_tr_details(tr, tc, mx=2000):
     "Create <details> block for tool call as JSON"
-    args = {k:_trunc_str(v, mx=mx) for k,v in json.loads(tc.function.arguments).items()}
+    args = {k:_trunc_str(v, mx=mx*5) for k,v in json.loads(tc.function.arguments).items()}
     res = {'id':tr['tool_call_id'], 
            'call':{'function': tc.function.name, 'arguments': args},
            'result':_trunc_str(tr.get('content'), mx=mx),}
@@ -671,8 +671,7 @@ class StreamFormatter:
             for img in getattr(d, 'images', []): res += f"\n\n![generated image]({nested_idx(img, 'image_url', 'url')})\n\n"
         elif isinstance(o, ModelResponse):
             if self.include_usage: res += f"\n{token_dtls_tag}<summary>{fmt_usage(o.usage)}</summary>\n\n`{o.usage}`\n\n</details>\n"
-            if c:=getattr(contents(o),'tool_calls',None):
-                self.tcs = {tc.id:tc for tc in c}
+            if c:=getattr(contents(o),'tool_calls',None): self.tcs = {tc.id:tc for tc in c}
         elif isinstance(o, dict) and 'tool_call_id' in o:
             res += mk_tr_details(o, self.tcs.pop(o['tool_call_id']), mx=self.mx)
         self.outp+=res
@@ -689,11 +688,12 @@ class AsyncStreamFormatter(StreamFormatter):
         async for o in rs: yield self.format_item(o)
 
 # %% ../nbs/00_core.ipynb #75ee8bce
-def display_stream(rs):
+@delegates(StreamFormatter)
+def display_stream(rs, **kwargs):
     "Use IPython.display to markdown display the response stream."
     try: from IPython.display import display, Markdown
     except ModuleNotFoundError: raise ModuleNotFoundError("This function requires ipython. Please run `pip install ipython` to use.")
-    fmt = StreamFormatter()
+    fmt = StreamFormatter(**kwargs)
     md = ''
     for o in fmt.format_stream(rs): 
         md+=o
@@ -701,13 +701,14 @@ def display_stream(rs):
     return fmt
 
 # %% ../nbs/00_core.ipynb #845df8b9
-async def adisplay_stream(rs):
+@delegates(AsyncStreamFormatter)
+async def adisplay_stream(rs, **kwargs):
     "Use IPython.display to markdown display the response stream."
     try: from IPython.display import display, Markdown
     except ModuleNotFoundError: raise ModuleNotFoundError("This function requires ipython. Please run `pip install ipython` to use.")
     fmt = AsyncStreamFormatter()
     md = ''
-    async for o in fmt.format_stream(rs): 
+    async for o in fmt.format_stream(rs, **kwargs): 
         md+=o
         display(Markdown(md),clear=True)
     return fmt
