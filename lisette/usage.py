@@ -29,25 +29,26 @@ class LisetteUsageLogger(CustomLogger):
         self.db = Database(db_path)
         self.usage = self.db.create(Usage)
     
-    async def async_log_success_event(self, kwargs, response_obj, start_time, end_time): self._log_usage(response_obj, kwargs, start_time, end_time)
-    def log_success_event(self, kwargs, response_obj, start_time, end_time):             self._log_usage(response_obj, kwargs, start_time, end_time)
+    async def async_log_success_event(self, kwargs, response_obj, start_time, end_time):
+        self._log_usage(response_obj, kwargs, start_time, end_time)
+    def log_success_event(self, kwargs, response_obj, start_time, end_time):
+        self._log_usage(response_obj, kwargs, start_time, end_time)
+
     def _log_usage(self, response_obj, kwargs, start_time, end_time):
         response_cost = kwargs.get('response_cost') or nested_idx(kwargs,'standard_logging_object','cost_breakdown','total_cost')
         usage = response_obj.usage
         ptd   = usage.prompt_tokens_details
-        self.usage.insert(Usage(timestamp=time.time(),
-                                model=response_obj.model,
-                                user_id=self.user_id_fn(),
-                                prompt_tokens=usage.prompt_tokens,
-                                completion_tokens=usage.completion_tokens,
-                                total_tokens=usage.total_tokens,
-                                cached_tokens=ptd.cached_tokens if ptd else 0, # used by gemini (read tokens)
-                                cache_creation_tokens=nested_idx(usage, 'cache_creation_input_tokens'),
-                                cache_read_tokens=nested_idx(usage, 'cache_read_input_tokens'), # used by anthropic
-                                web_search_requests=search_count(response_obj),
-                                response_cost=response_cost))
+        res = Usage(
+            timestamp=time.time(), model=response_obj.model, user_id=self.user_id_fn(), prompt_tokens=usage.prompt_tokens,
+            completion_tokens=usage.completion_tokens, total_tokens=usage.total_tokens,
+            cached_tokens=ptd.cached_tokens if ptd else 0, # used by gemini (read tokens)
+            cache_read_tokens=nested_idx(usage, 'cache_read_input_tokens'), # used by anthropic
+            cache_creation_tokens=nested_idx(usage, 'cache_creation_input_tokens'),
+            web_search_requests=search_count(response_obj), response_cost=response_cost)
+        self.usage.insert(res)
                   
-    def user_id_fn(self): raise NotImplementedError('Please implement `LisetteUsageLogger.user_id_fn` before initializing, e.g using fastcore.patch.')
+    def user_id_fn(self):
+        raise NotImplementedError('Implement `LisetteUsageLogger.user_id_fn` before initializing')
 
 # %% ../nbs/01_usage.ipynb #9ef8ac82
 @patch

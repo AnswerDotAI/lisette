@@ -49,7 +49,7 @@ def patch_litellm(seed=0):
     @patch
     def __init__(self: ChatCompletionMessageToolCall, function=None, id=None, type="function", **kwargs):
         # we keep the tool call prefix if it exists, this is needed for example to handle srvtoolu_ correctly.
-        if id and 'srvtoolu_' in id: id = id.split('_')[0]+_unqid()
+        # if id and 'srvtoolu_' in id: id = id.split('_')[0]+_unqid()
         self._orig___init__(function=function, id=id, type=type, **kwargs)
 
 # %% ../nbs/00_core.ipynb #d61cf441
@@ -462,20 +462,19 @@ def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None,
         res = yield from stream_with_complete(res,postproc=cite_footnotes)
     m = contents(res)
     if prefill: m.content = prefill + m.content
-    self.hist.append(m)
     action, msg = _handle_stop_reason(res)
-    if action == 'warning': add_warning(res, msg)
-    elif action == 'retry':
-        self.hist.pop()
+    if action == 'retry':
+        self.hist.append(Message(content=m.content, role='assistant'))
         yield from self._call(
             None, prefill, temp, think, search, stream, max_steps, step,
             final_prompt, tool_choice, **kwargs)
         return
+    self.hist.append(m)
+    if action == 'warning': add_warning(res, msg)
     yield res
     if tcs := _filter_srvtools(m.tool_calls):
-        tool_results=[_lite_call_func(o, **self.tcdict)
-            for o in tcs]
-        self.hist+=tool_results
+        tool_results = [_lite_call_func(o, **self.tcdict) for o in tcs]
+        self.hist += tool_results
         for r in tool_results: yield r
         if step>=max_steps: prompt,tool_choice,search = mk_msg(final_prompt),'none',False
         else: prompt = None
@@ -525,10 +524,8 @@ def mk_tc(func, args, tcid=None, idx=1):
     return {'index': idx, 'function': {'arguments': args, 'name': func}, 'id': tcid, 'type': 'function'}
 
 # %% ../nbs/00_core.ipynb #00cebbbb
-def mk_tc_req(content, tcs):
-    msg = Message(content=content, role='assistant', tool_calls=tcs, function_call=None)
-    msg.tool_calls = [{**dict(tc), 'function': dict(tc['function'])} for tc in msg.tool_calls]
-    return msg
+def mk_tc_req(content, tcs): return Message(content=content, role='assistant', tool_calls=tcs, function_call=None)
+
 
 # %% ../nbs/00_core.ipynb #59e69d43
 def mk_tc_result(tc, result): return {'tool_call_id': tc['id'], 'role': 'tool', 'name': tc['function']['name'], 'content': result}
