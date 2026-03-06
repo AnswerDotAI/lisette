@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.43
+
+### Bugs Squashed
+
+- fix `pause_turn` retry logic and re-enable `pause_turn` tests ([#129](https://github.com/AnswerDotAI/lisette/issues/129))
+
+
 ## 0.0.42
 
 ### New Features
