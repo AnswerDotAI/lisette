@@ -459,7 +459,7 @@ def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None,
         **kwargs)
     if stream:
         if prefill: yield _mk_prefill(prefill)
-        res = yield from stream_with_complete(res,postproc=cite_footnotes)
+        res = yield from stream_with_complete(res, postproc=cite_footnotes)
     m = contents(res)
     if prefill: m.content = prefill + m.content
     action, msg = _handle_stop_reason(res)
@@ -532,6 +532,37 @@ def mk_tc_result(tc, result): return {'tool_call_id': tc['id'], 'role': 'tool', 
 
 # %% ../nbs/00_core.ipynb #e5d8e695
 def mk_tc_results(tcq, results): return [mk_tc_result(a,b) for a,b in zip(tcq.tool_calls, results)]
+
+# %% ../nbs/00_core.ipynb #edc17903
+import litellm.llms.anthropic.chat.transformation as _anth_t
+import litellm.litellm_core_utils.prompt_templates.factory as _fact
+
+# %% ../nbs/00_core.ipynb #e3278219
+if '_orig_tp' not in globals(): _orig_tp = _anth_t.AnthropicConfig.transform_parsed_response
+def _patched_tp(self, completion_response, raw_response, model_response, **kw):
+    r = _orig_tp(self, completion_response, raw_response, model_response, **kw)
+    msg = r.choices[0].message
+    psf = getattr(msg, 'provider_specific_fields', None) or {}
+    if len(psf.get('web_search_results') or []) > 1 and getattr(msg, 'thinking_blocks', None):
+        psf['_original_content'] = completion_response.get('content')
+    return r
+_anth_t.AnthropicConfig.transform_parsed_response = _patched_tp
+
+if '_orig_apt' not in globals(): _orig_apt = _fact.anthropic_messages_pt
+def _patched_apt(messages, model, llm_provider):
+    for m in messages:
+        if not hasattr(m, 'get') or m.get('role') != 'assistant': continue
+        psf = m.get('provider_specific_fields')
+        if not isinstance(psf, dict) or not (oc := psf.get('_original_content')): continue
+        cc = next((b['cache_control'] for b in (m.get('content') or [])
+            if isinstance(b, dict) and 'cache_control' in b), None)
+        m['content'],m['thinking_blocks'] = oc,None
+        m['tool_calls'] = [tc for tc in (m.get('tool_calls') or [])
+            if not (getattr(tc, 'id', '') or tc.get('id', '')).startswith('srvtoolu_')] or None
+        for k in ('web_search_results', 'tool_results'): psf.pop(k, None)
+        if cc: oc[-1]['cache_control'] = cc
+    return _orig_apt(messages, model, llm_provider)
+_fact.anthropic_messages_pt = _patched_apt
 
 # %% ../nbs/00_core.ipynb #bb3811e0
 async def _alite_call_func(tc, tool_schemas, ns, tc_res=None, tc_res_eval=False):
