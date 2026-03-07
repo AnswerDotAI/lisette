@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.44
+
+### New Features
+
+- Add litellm workaround to preserve original content blocks for web search + thinking ([#130](https://github.com/AnswerDotAI/lisette/issues/130))
+
+
 ## 0.0.43
 
 ### Bugs Squashed
