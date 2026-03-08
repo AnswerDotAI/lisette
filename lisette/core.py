@@ -546,7 +546,6 @@ def _patched_tp(self, completion_response, raw_response, model_response, **kw):
     if len(psf.get('web_search_results') or []) > 1 and getattr(msg, 'thinking_blocks', None):
         psf['_original_content'] = completion_response.get('content')
     return r
-_anth_t.AnthropicConfig.transform_parsed_response = _patched_tp
 
 if '_orig_apt' not in globals(): _orig_apt = _fact.anthropic_messages_pt
 def _patched_apt(messages, model, llm_provider):
@@ -562,6 +561,8 @@ def _patched_apt(messages, model, llm_provider):
         for k in ('web_search_results', 'tool_results'): psf.pop(k, None)
         if cc: oc[-1]['cache_control'] = cc
     return _orig_apt(messages, model, llm_provider)
+
+_anth_t.AnthropicConfig.transform_parsed_response = _patched_tp
 _fact.anthropic_messages_pt = _patched_apt
 
 # %% ../nbs/00_core.ipynb #bb3811e0
