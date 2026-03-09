@@ -585,12 +585,11 @@ async def astream_with_complete(self, agen, postproc=noop):
 # %% ../nbs/00_core.ipynb #f354e37b
 class AsyncChat(Chat):
     async def _call(self, msg=None, prefill=None, temp=None, think=None, search=None, stream=False, max_steps=2, step=1,
-            final_prompt=None, tool_choice=None, max_tokens=None, n_workers=8, tc_timeout=7200, **kwargs):
+            final_prompt=None, tool_choice=None, max_tokens=None, n_workers=8, pause=0.001, tc_timeout=7200, **kwargs):
         if step>max_steps+1: return
         prefill, max_tokens = self._prep_call(prefill, search, max_tokens, kwargs)
         res = await acompletion(model=self.model, messages=self._prep_msg(msg, prefill), stream=stream, num_retries=2,
                          tools=self.tool_schemas, reasoning_effort=effort.get(think), tool_choice=tool_choice, max_tokens=int(max_tokens),
-                         # temperature is not supported when reasoning
                          temperature=None if think else ifnone(temp,self.temp), 
                          caching=self.cache and 'claude' not in self.model,
                          **kwargs)
@@ -613,7 +612,7 @@ class AsyncChat(Chat):
         yield res
 
         if tcs := _filter_srvtools(m.tool_calls):
-            tool_results = await parallel_async(_alite_call_func, tcs, timeout=tc_timeout, n_workers=n_workers, **self.tcdict)
+            tool_results = await parallel_async(_alite_call_func, tcs, timeout=tc_timeout, n_workers=n_workers, pause=pause, **self.tcdict)
             for r in tool_results: yield r
             self.hist+=tool_results
             if step>=max_steps-1: prompt,tool_choice,search = mk_msg(final_prompt),'none',False
