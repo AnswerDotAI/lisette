@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.45
+
+### New Features
+
+- Add `pause` param to `AsyncChat` call ([#131](https://github.com/AnswerDotAI/lisette/issues/131))
+
+
 ## 0.0.44
 
 ### New Features
