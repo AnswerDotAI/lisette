@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.46
+
+### Bugs Squashed
+
+- Pass kwargs to AsyncStreamFormatter init instead of `format_stream` ([#132](https://github.com/AnswerDotAI/lisette/issues/132))
+
+
 ## 0.0.45
 
 ### New Features
