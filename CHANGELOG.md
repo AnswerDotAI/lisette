@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.47
+
+### New Features
+
+- Patch AnthropicConfig.`map_web_search_tool` to use `web_search_20260209` type ([#133](https://github.com/AnswerDotAI/lisette/issues/133))
+
+
 ## 0.0.46
 
 ### Bugs Squashed
