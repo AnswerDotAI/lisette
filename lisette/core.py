@@ -734,9 +734,9 @@ async def adisplay_stream(rs, **kwargs):
     "Use IPython.display to markdown display the response stream."
     try: from IPython.display import display, Markdown
     except ModuleNotFoundError: raise ModuleNotFoundError("This function requires ipython. Please run `pip install ipython` to use.")
-    fmt = AsyncStreamFormatter()
+    fmt = AsyncStreamFormatter(**kwargs)
     md = ''
-    async for o in fmt.format_stream(rs, **kwargs): 
+    async for o in fmt.format_stream(rs):
         md+=o
         display(Markdown(md),clear=True)
     return fmt
