@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.48
+
+### New Features
+
+- Add StopResponse/FullResponse types and `_has_stop` to allow tools to halt the tool loop early ([#134](https://github.com/AnswerDotAI/lisette/issues/134))
+
+
 ## 0.0.47
 
 ### New Features
