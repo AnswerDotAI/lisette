@@ -6,9 +6,9 @@
 __all__ = ['sonn45', 'sonn46', 'opus45', 'opus46', 'info', 'tool_dtls_tag', 're_tools', 'token_dtls_tag', 're_token', 'effort',
            'tc_res_sysp', 'patch_litellm', 'remove_cache_ckpts', 'contents', 'stop_reason', 'mk_msg', 'fmt2hist',
            'mk_msgs', 'stream_with_complete', 'lite_mk_func', 'ToolResponse', 'structured', 'cite_footnote',
-           'cite_footnotes', 'mk_stream_chunk', 'Chat', 'add_warning', 'random_tool_id', 'mk_tc', 'mk_tc_req',
-           'mk_tc_result', 'mk_tc_results', 'astream_with_complete', 'AsyncChat', 'mk_tr_details', 'fmt_usage',
-           'StreamFormatter', 'AsyncStreamFormatter', 'display_stream', 'adisplay_stream']
+           'cite_footnotes', 'mk_stream_chunk', 'StopResponse', 'FullResponse', 'Chat', 'add_warning', 'random_tool_id',
+           'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results', 'astream_with_complete', 'AsyncChat', 'mk_tr_details',
+           'fmt_usage', 'StreamFormatter', 'AsyncStreamFormatter', 'display_stream', 'adisplay_stream']
 
 # %% ../nbs/00_core.ipynb #82380377
 import asyncio, base64, json, litellm, mimetypes, random, string, ast
@@ -278,13 +278,16 @@ def _try_eval(o):
         except: return o
     return o
 
-# %% ../nbs/00_core.ipynb #238576e5
+# %% ../nbs/00_core.ipynb #049504c8
 def _mk_tool_result(tc, res, tc_res=None, tc_res_eval=False):
     "Unwrap `ToolResponse`, store result if needed, and format tool result message"
     is_tr = isinstance(res, ToolResponse)
-    res = res.content if is_tr else res
-    if tc_res is not None: tc_res[tc.id] = _try_eval(res) if tc_res_eval else res
-    content = _prep_tool_res(res, tc.id) if tc_res is not None else (res if is_tr else str(res))
+    if is_tr: res = res.content
+    if tc_res is not None:
+        tc_res[tc.id] = _try_eval(res) if tc_res_eval else res
+        content = _prep_tool_res(res, tc.id)
+    elif is_tr or isinstance(res, str): content = res
+    else: content = str(res)
     return {"tool_call_id": tc.id, "role": "tool", "name": tc.function.name, "content": content}
 
 # %% ../nbs/00_core.ipynb #468a19d4
@@ -347,9 +350,16 @@ def mk_stream_chunk(**kwargs): return ModelResponseStream([StreamingChoices(delt
 def _mk_prefill(pf): return mk_stream_chunk(content=pf, role='assistant')
 
 
-# %% ../nbs/00_core.ipynb #f3ac31b4
+# %% ../nbs/00_core.ipynb #2d5b468c
+class StopResponse(str): pass
+
+class FullResponse(str): pass
+def _has_stop(results): return any(isinstance(r.get('content'), StopResponse) for r in results)
+
+# %% ../nbs/00_core.ipynb #da09ec48
 def _trunc_str(s, mx=2000, replace="TRUNCATED"):
     "Truncate `s` to `mx` chars max, adding `replace` if truncated"
+    if isinstance(s, FullResponse): return s
     s = str(s).strip()
     if len(s)<=mx: return s
     s = s[10:mx-10]
@@ -483,7 +493,7 @@ def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None,
         tool_results = [_lite_call_func(o, **self.tcdict) for o in tcs]
         self.hist += tool_results
         for r in tool_results: yield r
-        if step>=max_steps: prompt,tool_choice,search = mk_msg(final_prompt),'none',False
+        if step>=max_steps or _has_stop(tool_results): prompt,tool_choice,search = mk_msg(final_prompt),'none',False
         else: prompt = None
         try: yield from self._call(
             prompt, prefill, temp, think, search, stream, max_steps, step+1,
@@ -622,7 +632,7 @@ class AsyncChat(Chat):
             tool_results = await parallel_async(_alite_call_func, tcs, timeout=tc_timeout, n_workers=n_workers, pause=pause, **self.tcdict)
             for r in tool_results: yield r
             self.hist+=tool_results
-            if step>=max_steps-1: prompt,tool_choice,search = mk_msg(final_prompt),'none',False
+            if step>=max_steps-1 or _has_stop(tool_results): prompt,tool_choice,search = mk_msg(final_prompt),'none',False
             else: prompt = None
             try:
                 async for result in self._call(
