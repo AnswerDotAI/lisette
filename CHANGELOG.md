@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.0.49
+
+### New Features
+
+- Show pending tool call indicators in StreamFormatter ([#135](https://github.com/AnswerDotAI/lisette/issues/135))
+
+
 ## 0.0.48
 
 ### New Features
