@@ -723,7 +723,7 @@ class StreamFormatter:
             if self.include_usage: res += f"\n{token_dtls_tag}<summary>{fmt_usage(o.usage)}</summary>\n\n`{o.usage}`\n\n</details>\n"
             if c:=getattr(contents(o),'tool_calls',None):
                 self.tcs = {tc.id:tc for tc in c}
-                for tc in c: res += f"\n- ⏳ {_tc_summary(tc)} ⏳"
+                for tc in c: res += f"\n- ⏳ `{_tc_summary(tc)}` ⏳"
         elif isinstance(o, dict) and 'tool_call_id' in o:
             res += mk_tr_details(o, self.tcs.pop(o['tool_call_id']), mx=self.mx)
         self.outp+=res
