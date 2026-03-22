@@ -354,7 +354,7 @@ def _mk_prefill(pf): return mk_stream_chunk(content=pf, role='assistant')
 class StopResponse(str): pass
 
 class FullResponse(str): pass
-def _has_stop(results): return any(isinstance(r.get('content'), StopResponse) for r in results)
+def _has_stop(results): return any(isinstance(r.get('content'), StopResponse) for r in results if isinstance(r, dict))
 
 # %% ../nbs/00_core.ipynb #da09ec48
 def _trunc_str(s, mx=2000, replace="TRUNCATED"):
@@ -673,14 +673,19 @@ def _trunc_param(v, mx=50):
     try: return ast.literal_eval(tp)
     except Exception: return repr(tp).replace('\\\\', '\\')
 
+def _tc_summary(tc):
+    "Format tool call as func(params) string"
+    args = json.loads(tc.function.arguments)
+    params = ', '.join(f"{k}={_trunc_param(v)}" for k,v in args.items())
+    return f"{tc.function.name}({params})"
+
 def mk_tr_details(tr, tc, mx=2000):
     "Create <details> block for tool call as JSON"
     args = {k:_trunc_str(v, mx=mx*5) for k,v in json.loads(tc.function.arguments).items()}
-    res = {'id':tr['tool_call_id'], 
+    res = {'id':tr['tool_call_id'],
            'call':{'function': tc.function.name, 'arguments': args},
            'result':_trunc_str(tr.get('content'), mx=mx),}
-    params = ', '.join(f"{k}={_trunc_param(v)}" for k,v in args.items())
-    summ = f"<summary>{tc.function.name}({params})</summary>"
+    summ = f"<summary>{_tc_summary(tc)}</summary>"
     return f"\n\n{tool_dtls_tag}\n{summ}\n\n```json\n{dumps(res, indent=2)}\n```\n\n</details>\n\n"
 
 # %% ../nbs/00_core.ipynb #c49b2749
@@ -716,7 +721,9 @@ class StreamFormatter:
             for img in getattr(d, 'images', []): res += f"\n\n![generated image]({nested_idx(img, 'image_url', 'url')})\n\n"
         elif isinstance(o, ModelResponse):
             if self.include_usage: res += f"\n{token_dtls_tag}<summary>{fmt_usage(o.usage)}</summary>\n\n`{o.usage}`\n\n</details>\n"
-            if c:=getattr(contents(o),'tool_calls',None): self.tcs = {tc.id:tc for tc in c}
+            if c:=getattr(contents(o),'tool_calls',None):
+                self.tcs = {tc.id:tc for tc in c}
+                for tc in c: res += f"\n- ⏳ {_tc_summary(tc)} ⏳"
         elif isinstance(o, dict) and 'tool_call_id' in o:
             res += mk_tr_details(o, self.tcs.pop(o['tool_call_id']), mx=self.mx)
         self.outp+=res
