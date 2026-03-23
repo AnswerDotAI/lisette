@@ -359,16 +359,19 @@ class FullResponse(str): pass
 def _has_stop(results): return any(isinstance(r.get('content'), StopResponse) for r in results if isinstance(r, dict))
 
 # %% ../nbs/00_core.ipynb #da09ec48
-def _trunc_str(s, mx=2000, replace="TRUNCATED"):
+def _trunc_str(s, mx=2000, skip=10, replace="TRUNCATED"):
     "Truncate `s` to `mx` chars max, adding `replace` if truncated"
     if isinstance(s, FullResponse): return s
     s = str(s).strip()
     if len(s)<=mx: return s
-    s = s[10:mx-10]
+    s = s[skip:mx-skip]
     ss = s.split(' ')
-    if len(ss[-1])>50: ss[-1] = ss[-1][:5]
+    if len(ss[-1])>150: ss[-1] = ss[-1][:5]
     s = ' '.join(ss)
-    return f"<{replace}>…{s}…</{replace}>"
+    if skip: s = f"…{s}"
+    s = f"{s}…"
+    if replace: s = f"<{replace}>{s}</{replace}>"
+    return s
 
 # %% ../nbs/00_core.ipynb #e18e226c
 _final_prompt = dict(role="user", content="You have used all your tool calls for this turn. Please summarize your findings. If you did not complete your goal, tell the user what further work is needed. You may use tools again on the next user message.")
@@ -729,17 +732,18 @@ async def __call__(
     return res # normal chat behavior only return last msg
 
 # %% ../nbs/00_core.ipynb #049f141f
-def _trunc_param(v, mx=50):
+def _trunc_param(v, mx=40):
     "Truncate and escape param value for display"
-    tp = _trunc_str(str(v).replace('`', r'\`'), mx=mx, replace='…')
+    tp = _trunc_str(str(v).replace('`', r'\`'), mx=mx, replace=None, skip=0)
     try: return ast.literal_eval(tp)
     except Exception: return repr(tp).replace('\\\\', '\\')
 
-def _tc_summary(tc):
-    "Format tool call as func(params) string"
+def _tc_summary(tc, tr=None):
+    "Format tool call as func(params) → result string"
     args = json.loads(tc.function.arguments)
     params = ', '.join(f"{k}={_trunc_param(v)}" for k,v in args.items())
-    return f"{tc.function.name}({params})"
+    res = f"→{_trunc_param(tr.get('content',''))}" if tr else ''
+    return f"{tc.function.name}({params}){res}"
 
 def mk_tr_details(tr, tc, mx=2000):
     "Create <details> block for tool call as JSON"
@@ -747,7 +751,7 @@ def mk_tr_details(tr, tc, mx=2000):
     res = {'id':tr['tool_call_id'],
            'call':{'function': tc.function.name, 'arguments': args},
            'result':_trunc_str(tr.get('content'), mx=mx),}
-    summ = f"<summary>{_tc_summary(tc)}</summary>"
+    summ = f"<summary>{_tc_summary(tc,tr)}</summary>"
     return f"\n\n{tool_dtls_tag}\n{summ}\n\n```json\n{dumps(res, indent=2)}\n```\n\n</details>\n\n"
 
 # %% ../nbs/00_core.ipynb #8cb7f078
