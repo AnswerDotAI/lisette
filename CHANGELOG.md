@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.1.0
+
+### New Features
+
+- Refactor usage tracking: replace `fmt_usage`/Usage with UsageStats class, add Chat.use accumulator and markup support, move `search_count` to core ([#136](https://github.com/AnswerDotAI/lisette/issues/136))
+
+
 ## 0.0.49
 
 ### New Features
