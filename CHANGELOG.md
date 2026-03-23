@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.1.1
+
+### New Features
+
+- Add skip/replace params to `_trunc_str`, show tool results in `_tc_summary` ([#137](https://github.com/AnswerDotAI/lisette/issues/137))
+
+
 ## 0.1.0
 
 ### New Features
