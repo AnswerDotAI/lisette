@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.1.3
+
+### New Features
+
+- Optionally preserve full content in tool result details ([#139](https://github.com/AnswerDotAI/lisette/issues/139))
+
+
 ## 0.1.2
 
 ### New Features
