@@ -745,12 +745,18 @@ def _tc_summary(tc, tr=None):
     res = f"→{_trunc_param(tr.get('content',''))}" if tr else ''
     return '<code>'+escape(f"{tc.function.name}({params}){res}")+'</code>'
 
+def _trunc_content(content, mx):
+    "Truncate tool result content, respecting _full flag and FullResponse"
+    if isinstance(content, FullResponse): return content
+    if isinstance(content, dict) and '_full' in content: return content['_full']
+    return _trunc_str(content, mx=mx)
+
 def mk_tr_details(tr, tc, mx=2000):
     "Create <details> block for tool call as JSON"
     args = {k:_trunc_str(v, mx=mx*5) for k,v in json.loads(tc.function.arguments).items()}
     res = {'id':tr['tool_call_id'],
            'call':{'function': tc.function.name, 'arguments': args},
-           'result':_trunc_str(tr.get('content'), mx=mx),}
+           'result':_trunc_content(tr.get('content'), mx=mx),}
     summ = f"<summary>{_tc_summary(tc,tr)}</summary>"
     return f"\n\n{tool_dtls_tag}\n{summ}\n\n```json\n{dumps(res, indent=2)}\n```\n\n</details>\n\n"
 
