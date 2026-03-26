@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.1.2
+
+### New Features
+
+- Use code block and `escape` for tool summaries and previews ([#138](https://github.com/AnswerDotAI/lisette/issues/138))
+
+
 ## 0.1.1
 
 ### New Features
