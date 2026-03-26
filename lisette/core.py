@@ -743,7 +743,7 @@ def _tc_summary(tc, tr=None):
     args = json.loads(tc.function.arguments)
     params = ', '.join(f"{k}={_trunc_param(v)}" for k,v in args.items())
     res = f"→{_trunc_param(tr.get('content',''))}" if tr else ''
-    return f"{tc.function.name}({params}){res}"
+    return '<code>'+escape(f"{tc.function.name}({params}){res}")+'</code>'
 
 def mk_tr_details(tr, tc, mx=2000):
     "Create <details> block for tool call as JSON"
@@ -775,7 +775,7 @@ class StreamFormatter:
         elif isinstance(o, ModelResponse):
             if c:=getattr(contents(o),'tool_calls',None):
                 self.tcs = {tc.id:tc for tc in c}
-                for tc in c: res += f"\n- ⏳ `{_tc_summary(tc)}` ⏳"
+                for tc in c: res += f"\n- ⏳ {_tc_summary(tc)} ⏳"
         elif isinstance(o, dict) and 'tool_call_id' in o:
             res += mk_tr_details(o, self.tcs.pop(o['tool_call_id']), mx=self.mx)
         self.outp+=res
