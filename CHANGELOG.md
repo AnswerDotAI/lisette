@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.1.5
+
+### New Features
+
+- Disable anthropic beta web search ([#141](https://github.com/AnswerDotAI/lisette/issues/141))
+
+
 ## 0.1.4
 
 ### New Features
