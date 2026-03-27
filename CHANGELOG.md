@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.1.4
+
+### New Features
+
+- Export `status_re` and add named capture in `re_tools` ([#140](https://github.com/AnswerDotAI/lisette/issues/140))
+
+
 ## 0.1.3
 
 ### New Features
