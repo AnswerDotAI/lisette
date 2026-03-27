@@ -4,12 +4,12 @@
 
 # %% auto #0
 __all__ = ['haik45', 'sonn45', 'sonn46', 'opus45', 'opus46', 'info', 'tool_dtls_tag', 're_tools', 'token_dtls_tag', 're_token',
-           'effort', 'tc_res_sysp', 'patch_litellm', 'remove_cache_ckpts', 'contents', 'stop_reason', 'mk_msg',
-           'fmt2hist', 'mk_msgs', 'stream_with_complete', 'lite_mk_func', 'ToolResponse', 'structured', 'cite_footnote',
-           'cite_footnotes', 'mk_stream_chunk', 'StopResponse', 'FullResponse', 'search_count', 'UsageStats', 'Chat',
-           'add_warning', 'random_tool_id', 'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results',
-           'astream_with_complete', 'AsyncChat', 'mk_tr_details', 'StreamFormatter', 'AsyncStreamFormatter',
-           'display_stream', 'adisplay_stream']
+           'effort', 'tc_res_sysp', 'status_re', 'patch_litellm', 'remove_cache_ckpts', 'contents', 'stop_reason',
+           'mk_msg', 'split_tools', 'fmt2hist', 'mk_msgs', 'stream_with_complete', 'lite_mk_func', 'ToolResponse',
+           'structured', 'cite_footnote', 'cite_footnotes', 'mk_stream_chunk', 'StopResponse', 'FullResponse',
+           'search_count', 'UsageStats', 'Chat', 'add_warning', 'random_tool_id', 'mk_tc', 'mk_tc_req', 'mk_tc_result',
+           'mk_tc_results', 'astream_with_complete', 'AsyncChat', 'mk_tr_details', 'StreamFormatter',
+           'AsyncStreamFormatter', 'display_stream', 'adisplay_stream']
 
 # %% ../nbs/00_core.ipynb #82380377
 import asyncio, base64, json, litellm, mimetypes, random, string, ast
@@ -168,7 +168,7 @@ def mk_msg(
 
 # %% ../nbs/00_core.ipynb #8886f917
 tool_dtls_tag = "<details class='tool-usage-details'>"
-re_tools = re.compile(fr"^({tool_dtls_tag}\n*(?:<summary>.*?</summary>\n*)?\n*```json\n+(.*?)\n+```\n+</details>)",
+re_tools = re.compile(fr"^({tool_dtls_tag}\n*(?:<summary>(?P<summary>.*?)</summary>\n*)?\n*```json\n+(.*?)\n+```\n+</details>)",
                       flags=re.DOTALL|re.MULTILINE)
 token_dtls_tag = "<details class='token-usage-details'>"
 re_token = re.compile(fr"^{re.escape(token_dtls_tag)}<summary>.*?</summary>\n*\n*`.*?`\n*\n*</details>\n?",
@@ -185,13 +185,16 @@ def _extract_tool(text:str)->tuple[dict,dict]:
     tr = {'role': 'tool','tool_call_id': d['id'],'name': func, 'content': d['result']}
     return tc,tr
 
+def split_tools(s):
+    "Split formatted output into (text, summary, tooljson) chunks"
+    return [(txt,summ,tj) for txt,_,summ,tj in chunked(re_tools.split(s.strip()), 4, pad=True)]
+
 def fmt2hist(outp:str)->list:
     "Transform a formatted output into a LiteLLM compatible history"
     lm,hist = Message(),[]
     if token_dtls_tag in outp: outp = re_token.sub('', outp)
     if tool_dtls_tag not in outp: return [outp]
-    spt = re_tools.split(outp.strip())
-    for is_last,(txt,_,tooljson) in loop_last(chunked(spt,3,pad=True)):
+    for is_last,(txt,_,tooljson) in loop_last(split_tools(outp)):
         if is_last and not (txt or '').strip() and not tooljson: continue
         txt = txt.strip() if tooljson or txt.strip() else '.'
         hist.append(lm:=Message(txt))
@@ -761,6 +764,8 @@ def mk_tr_details(tr, tc, mx=2000):
     return f"\n\n{tool_dtls_tag}\n{summ}\n\n```json\n{dumps(res, indent=2)}\n```\n\n</details>\n\n"
 
 # %% ../nbs/00_core.ipynb #8cb7f078
+status_re = re.compile(r'^- ⏳ <code>(.*)</code> ⏳$|^🧠+$', re.MULTILINE)
+
 class StreamFormatter:
     def __init__(self, mx=2000, debug=False, showthink=False):
         self.outp,self.tcs = '',{}
