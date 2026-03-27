@@ -751,7 +751,7 @@ def _tc_summary(tc, tr=None):
 def _trunc_content(content, mx):
     "Truncate tool result content, respecting _full flag and FullResponse"
     if isinstance(content, FullResponse): return content
-    if isinstance(content, dict) and '_full' in content: return content['_full']
+    if isinstance(content, dict) and '_full' in content and len(content)==1: return content['_full']
     return _trunc_str(content, mx=mx)
 
 def mk_tr_details(tr, tc, mx=2000):
