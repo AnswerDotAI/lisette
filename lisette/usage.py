@@ -16,7 +16,7 @@ except ImportError: raise ImportError("Please install `fastlite` to use sqlite b
 class LisetteUsageLogger(CustomLogger):
     def __init__(self, db_path): 
         self.db = Database(db_path)
-        self.usage = self.db.create(Usage)
+        self.usage = self.db.create(UsageStats)
     
     async def async_log_success_event(self, kwargs, response_obj, start_time, end_time):
         self._log_usage(response_obj, kwargs, start_time, end_time)
@@ -38,6 +38,42 @@ class LisetteUsageLogger(CustomLogger):
                   
     def user_id_fn(self):
         raise NotImplementedError('Implement `LisetteUsageLogger.user_id_fn` before initializing')
+
+# %% ../nbs/01_usage.ipynb #deef7e42
+# class UsageStats:
+#     def __init__(self, prompt_tokens=0, completion_tokens=0, total_tokens=0, cached_tokens=0, cache_creation_tokens=0, reasoning_tokens=0, web_search_requests=0, cost=0.0): store_attr()
+# 
+#     @classmethod
+#     def from_response(cls, r):
+#         u = r.usage
+#         return cls(
+#             prompt_tokens=u.prompt_tokens or 0, completion_tokens=u.completion_tokens or 0, total_tokens=u.total_tokens or 0,
+#             cached_tokens=nested_idx(u, 'prompt_tokens_details', 'cached_tokens') or 0,
+#             cache_creation_tokens=nested_idx(u, 'prompt_tokens_details', 'cache_creation_tokens') or 0,
+#             reasoning_tokens=nested_idx(u, 'completion_tokens_details', 'reasoning_tokens') or 0,
+#             web_search_requests=search_count(r),
+#             cost=litellm.completion_cost(completion_response=r))
+# 
+#     def __add__(self, other):
+#         if other is None: return self
+#         return UsageStats(**{k: getattr(self, k, 0) + getattr(other, k, 0)
+#             for k in ('prompt_tokens', 'completion_tokens', 'total_tokens', 'cached_tokens', 'cache_creation_tokens', 'reasoning_tokens', 'web_search_requests', 'cost')
+#         })
+#     def __radd__(self, other): return self if other is None or other == 0 else self.__add__(other)
+# 
+#     def __repr__(self):
+#         hit = f"{100*self.cached_tokens/self.prompt_tokens:.1f}%" if self.prompt_tokens else "N/A"
+#         parts = [f"total={self.total_tokens:,}", f"in={self.prompt_tokens:,}", f"out={self.completion_tokens:,}", f"cached={hit}"]
+#         if self.cache_creation_tokens: parts.append(f"cache_new={self.cache_creation_tokens:,}")
+#         if self.reasoning_tokens: parts.append(f"reasoning={self.reasoning_tokens:,}")
+#         if self.web_search_requests: parts.append(f"searches={self.web_search_requests}")
+#         if self.cost: parts.append(f"${self.cost:.4f}")
+#         return ' | '.join(parts)
+# 
+#     def fmt(self):
+#         if not self.total_tokens: return ''
+#         summ = f"${self.cost:.4f}" if self.cost else f"{self.total_tokens:,} tokens"
+#         return f"\n\n{token_dtls_tag}<summary>{summ}</summary>\n\n`{self!r}`\n\n</details>\n"
 
 # %% ../nbs/01_usage.ipynb #9ef8ac82
 def total_cost(self, sc=0.01): return self.response_cost + sc * ifnone(self.web_search_requests, 0)

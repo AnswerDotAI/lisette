@@ -328,8 +328,8 @@ def structured(
 from litellm.llms.anthropic.chat.transformation import AnthropicConfig
 
 # %% ../nbs/00_core.ipynb #a2e7428b
-@patch
-def map_web_search_tool(self:AnthropicConfig, value): return {**self._orig_map_web_search_tool(value), 'type':'web_search_20260209'}
+# @patch
+# def map_web_search_tool(self:AnthropicConfig, value): return {**self._orig_map_web_search_tool(value), 'type':'web_search_20260209'}
 
 # %% ../nbs/00_core.ipynb #6530af43
 def _has_search(m):
