@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.1.6
+
+### New Features
+
+- Do not truncate `Safe` strs ([#142](https://github.com/AnswerDotAI/lisette/issues/142))
+
+
 ## 0.1.5
 
 ### New Features
