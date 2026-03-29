@@ -19,9 +19,12 @@ from litellm import (acompletion, completion, stream_chunk_builder, Message,
                      ModelResponse, ModelResponseStream, get_model_info, register_model, Usage)
 from litellm.utils import function_to_dict, StreamingChoices, Delta, ChatCompletionMessageToolCall, Function, Choices
 from toolslm.funccall import mk_ns, call_func, call_func_async, get_schema
+
 from fastcore.utils import *
 from fastcore.meta import delegates
 from fastcore import imghdr
+from fastcore.xml import Safe
+
 from dataclasses import dataclass
 from litellm.exceptions import ContextWindowExceededError
 
@@ -357,14 +360,15 @@ def _mk_prefill(pf): return mk_stream_chunk(content=pf, role='assistant')
 
 # %% ../nbs/00_core.ipynb #2d5b468c
 class StopResponse(str): pass
-
 class FullResponse(str): pass
+
 def _has_stop(results): return any(isinstance(r.get('content'), StopResponse) for r in results if isinstance(r, dict))
 
 # %% ../nbs/00_core.ipynb #da09ec48
 def _trunc_str(s, mx=2000, skip=10, replace="TRUNCATED"):
     "Truncate `s` to `mx` chars max, adding `replace` if truncated"
-    if isinstance(s, FullResponse): return s
+    if len(s)>2 and s[0]=='𝍁' and s[-1]=='𝍁': return s[1:-1]
+    if isinstance_str(s, ('FullResponse','Safe')): return s
     s = str(s).strip()
     if len(s)<=mx: return s
     s = s[skip:mx-skip]
@@ -749,8 +753,7 @@ def _tc_summary(tc, tr=None):
     return '<code>'+escape(f"{tc.function.name}({params}){res}")+'</code>'
 
 def _trunc_content(content, mx):
-    "Truncate tool result content, respecting _full flag and FullResponse"
-    if isinstance(content, FullResponse): return content
+    "Truncate tool result content, respecting '_full' flag"
     if isinstance(content, dict) and '_full' in content and len(content)==1: return content['_full']
     return _trunc_str(content, mx=mx)
 
