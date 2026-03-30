@@ -99,6 +99,16 @@ info['max_input_tokens'] = 200_000
 register_model({"claude-opus-4-6": info})
 get_model_info.cache_clear()
 
+# %% ../nbs/00_core.ipynb #a4e798f4
+from litellm.llms.fireworks_ai.chat.transformation import FireworksAIConfig
+
+# %% ../nbs/00_core.ipynb #14a0ccc0
+@patch
+def get_provider_info(self:FireworksAIConfig, model):
+    res = self._orig_get_provider_info(model)
+    if 'kimi' in model: res['supports_reasoning'] = True
+    return res
+
 # %% ../nbs/00_core.ipynb #d4c8b8f2
 def _bytes2content(data):
     "Convert bytes to litellm content dict (image, pdf, audio, video)"
@@ -508,7 +518,7 @@ def _handle_stop_reason(res):
 
 # %% ../nbs/00_core.ipynb #4f58a3c9
 @patch
-def _prep_call(self:Chat, prefill, search, max_tokens, kwargs):
+def _prep_call(self:Chat, prefill, search, max_tokens, kwargs, stream=False):
     "Prepare model info, prefill, search, and provider kwargs for a completion call"
     try: model_info = get_model_info(self.model)
     except Exception:
@@ -521,6 +531,7 @@ def _prep_call(self:Chat, prefill, search, max_tokens, kwargs):
     if self.api_base: kwargs['api_base'] = self.api_base
     if self.api_key: kwargs['api_key'] = self.api_key
     if self.extra_headers: kwargs['extra_headers'] = self.extra_headers
+    if stream: kwargs['stream_options'] = {"include_usage": True}
     return prefill, max_tokens
 
 # %% ../nbs/00_core.ipynb #fa528e85
@@ -529,7 +540,7 @@ def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None,
         max_steps=2, step=1, final_prompt=None, tool_choice=None, max_tokens=None, **kwargs):
     "Internal method that always yields responses"
     if step>max_steps+1: return
-    prefill, max_tokens = self._prep_call(prefill, search, max_tokens, kwargs)
+    prefill, max_tokens = self._prep_call(prefill, search, max_tokens, kwargs, stream=stream)
     res = completion(
         model=self.model, messages=self._prep_msg(msg, prefill), stream=stream, max_tokens=int(max_tokens),
         tools=self.tool_schemas, reasoning_effort = effort.get(think), tool_choice=tool_choice, num_retries=2,
@@ -593,6 +604,31 @@ def __call__(self:Chat,
 def print_hist(self:Chat):
     "Print each message on a different line"
     for r in self.hist: print(r, end='\n\n')
+
+# %% ../nbs/00_core.ipynb #39212f01
+from litellm.llms.fireworks_ai import cost_calculator as fw_cc
+import litellm.cost_calculator as lcc
+from fastcore.meta import patch_to
+
+# %% ../nbs/00_core.ipynb #4f6e722d
+@patch_to(fw_cc)
+def cost_per_token(model, usage):
+    prompt_cost, completion_cost = fw_cc._orig_cost_per_token(model, usage)
+    try: model_info = get_model_info(model=model, custom_llm_provider="fireworks_ai")
+    except: return prompt_cost, completion_cost
+    cache_read = (getattr(usage, 'cache_read_input_tokens', None)
+        or nested_idx(usage, 'prompt_tokens_details', 'cached_tokens')
+        or (usage.get('cache_read_input_tokens', 0) if isinstance(usage, dict) else 0) or 0)
+    if cache_read and (cache_rate := model_info.get('cache_read_input_token_cost')):
+        prompt_cost += cache_read * (cache_rate - model_info['input_cost_per_token'])
+    cache_create = (getattr(usage, 'cache_creation_input_tokens', None)
+        or nested_idx(usage, 'prompt_tokens_details', 'cache_creation_tokens')
+        or (usage.get('cache_creation_input_tokens', 0) if isinstance(usage, dict) else 0) or 0)
+    if cache_create and (create_rate := model_info.get('cache_creation_input_token_cost')):
+        prompt_cost += cache_create * (create_rate - model_info['input_cost_per_token'])
+    return prompt_cost, completion_cost
+
+lcc.fireworks_ai_cost_per_token = fw_cc.cost_per_token
 
 # %% ../nbs/00_core.ipynb #0c33af14
 from litellm.litellm_core_utils.core_helpers import _FINISH_REASON_MAP
@@ -675,7 +711,7 @@ class AsyncChat(Chat):
     async def _call(self, msg=None, prefill=None, temp=None, think=None, search=None, stream=False, max_steps=2, step=1,
             final_prompt=None, tool_choice=None, max_tokens=None, n_workers=8, pause=0.001, tc_timeout=7200, **kwargs):
         if step>max_steps+1: return
-        prefill, max_tokens = self._prep_call(prefill, search, max_tokens, kwargs)
+        prefill, max_tokens = self._prep_call(prefill, search, max_tokens, kwargs, stream=stream)
         res = await acompletion(model=self.model, messages=self._prep_msg(msg, prefill), stream=stream, num_retries=2,
                          tools=self.tool_schemas, reasoning_effort=effort.get(think), tool_choice=tool_choice, max_tokens=int(max_tokens),
                          temperature=None if think else ifnone(temp,self.temp), 
