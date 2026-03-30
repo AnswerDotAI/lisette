@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.1.9
+
+### New Features
+
+- Add FireworksAI reasoning support for Kimi models and fix stream usage tracking ([#143](https://github.com/AnswerDotAI/lisette/issues/143))
+
+
 ## 0.1.8
 
 ### New Features
