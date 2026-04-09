@@ -2,6 +2,11 @@
 
 <!-- do not remove -->
 
+## 0.1.10
+
+- Sonnet 4.6 included
+
+
 ## 0.1.9
 
 ### New Features
