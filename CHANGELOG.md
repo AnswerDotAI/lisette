@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.1.11
+
+### New Features
+
+- Support opus 4.7, anthropic adaptive thinking, and work around gemini litellm bugs ([#144](https://github.com/AnswerDotAI/lisette/issues/144))
+
+
 ## 0.1.10
 
 - Sonnet 4.6 included
