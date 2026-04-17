@@ -482,7 +482,7 @@ class UsageStats:
         parts = [f"total={self.total_tokens:,}", f"in={self.prompt_tokens:,}", f"out={self.completion_tokens:,}", f"cached={hit}"]
         if self.cache_creation_tokens: parts.append(f"cache_new={self.cache_creation_tokens:,}")
         if self.reasoning_tokens: parts.append(f"reasoning={self.reasoning_tokens:,}")
-        if self.web_search_requests: parts.append(f"searches={self.web_search_requests}")
+        if getattr(self, 'web_search_requests', None): parts.append(f"searches={self.web_search_requests}")
         if self.cost: parts.append(f"${self.cost:.4f}")
         return ' | '.join(parts)
 
