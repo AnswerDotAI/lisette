@@ -2,6 +2,14 @@
 
 <!-- do not remove -->
 
+## 0.1.12
+
+### New Features
+
+- Add `tool_reminder` param to Chat for transient reminder injection ([#146](https://github.com/AnswerDotAI/lisette/issues/146))
+- Add GPT-5.4 model support and xhigh thinking effort for opus-4-7 ([#145](https://github.com/AnswerDotAI/lisette/issues/145))
+
+
 ## 0.1.11
 
 ### New Features
