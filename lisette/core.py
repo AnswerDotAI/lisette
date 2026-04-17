@@ -491,6 +491,18 @@ class UsageStats:
         summ = f"${self.cost:.4f}" if self.cost else f"{self.total_tokens:,} tokens"
         return f"\n\n{token_dtls_tag}<summary>{summ}</summary>\n\n`{self!r}`\n\n</details>\n"
 
+# %% ../nbs/00_core.ipynb #421c66f9
+def _inject_tool_reminder(msgs, reminder):
+    i = len(msgs)
+    while i>0 and msgs[i-1].get('role')=='tool': i-=1
+    if i>=len(msgs): return msgs
+    msgs,m = list(msgs),dict(msgs[i])
+    c = m.get('content')
+    m['content'] = [{'type':'text', 'text':reminder}]
+    if c: m['content'] += c if isinstance(c, list) else [{'type':'text', 'text':str(c)}]
+    msgs[i] = m
+    return msgs
+
 # %% ../nbs/00_core.ipynb #a9ece479
 class Chat:
     def __init__(
@@ -511,6 +523,7 @@ class Chat:
         tc_refs=False,            # Enable tool call result references
         tc_res_eval=False,        # literal_eval tool results before storing in tc_res
         markup=0,                 # Cost markup multiplier (e.g. 0.5 for 50%)
+        tool_reminder=None,       # Prepended as a block to the first trailing tool result (transient)
     ):
         "LiteLLM chat client."
         self.model = model
@@ -534,7 +547,9 @@ class Chat:
         if msg: self.hist = self.hist+[msg]
         self.hist = mk_msgs(self.hist, self.cache and 'claude' in self.model, cache_idxs, self.ttl)
         pf = [{"role":"assistant","content":prefill}] if prefill else []
-        return sp + self.hist + pf
+        msgs = sp + self.hist + pf
+        if self.tool_reminder: msgs = _inject_tool_reminder(msgs, self.tool_reminder)
+        return msgs
     
     @property
     def tcdict(self): return dict(tool_schemas=self.tool_schemas, ns=self.ns, tc_res=self.tc_res, tc_res_eval=self.tc_res_eval)
