@@ -407,6 +407,7 @@ def cite_footnotes(stream_list):
 
 # %% ../nbs/00_core.ipynb #a636d732
 effort = AttrDict({o[0]:o for o in ('low','medium','high')})
+effort['x'] = 'max'
 
 # %% ../nbs/00_core.ipynb #715e9a83
 def mk_stream_chunk(**kwargs): return ModelResponseStream([StreamingChoices(delta=Delta(**kwargs))])
@@ -580,6 +581,8 @@ def _handle_stop_reason(res):
 def _think_kw(model, think):
     "Return completion kwargs for thinking/reasoning based on model"
     if not think: return {}
+    # Only Anthropic models handle max thinking
+    if think=='x' and not ('sonnet' in model or 'opus' in model): think = 'h'
     e = effort.get(think)
     if 'opus-4-7' in model:
         if think == 'h': e = 'xhigh'
@@ -940,15 +943,18 @@ async def adisplay_stream(rs, **kwargs):
         display(Markdown(md),clear=True)
     return fmt
 
-# %% ../nbs/00_core.ipynb #6a6b775f
+# %% ../nbs/00_core.ipynb #298aae95
 # temp workaround whilst litellm doesn't support xhigh think
+_EFFORT_SWAP = {'xhigh':'high', 'max':'high'}
+
 @patch
 def transform_request(self:AnthropicConfig, model, messages, optional_params, litellm_params, headers):
     oc = optional_params.get("output_config")
-    xhigh = isinstance(oc, dict) and oc.get("effort") == "xhigh"
-    if xhigh: oc["effort"] = "high"
+    orig = oc.get("effort") if isinstance(oc, dict) else None
+    swap = _EFFORT_SWAP.get(orig)
+    if swap: oc["effort"] = swap
     data = self._orig_transform_request(model, messages, optional_params, litellm_params, headers)
-    if xhigh:
-        oc["effort"] = "xhigh"
-        if "output_config" in data: data["output_config"]["effort"] = "xhigh"
+    if swap:
+        oc["effort"] = orig
+        if "output_config" in data: data["output_config"]["effort"] = orig
     return data
