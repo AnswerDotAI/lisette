@@ -983,6 +983,7 @@ def get_cost_for_built_in_tools(cls, model, response_object=None, usage=None, cu
         usage.server_tool_use = ServerToolUse(**usage.server_tool_use)
     return cls._orig_get_cost_for_built_in_tools(model, response_object=response_object, usage=usage, custom_llm_provider=custom_llm_provider, standard_built_in_tools_params=standard_built_in_tools_params)
 
-# %% ../nbs/00_core.ipynb #baeb5ee0
-register_model({"fireworks_ai/accounts/fireworks/models/kimi-k2p6":
-                dict(get_model_info("fireworks_ai/accounts/fireworks/models/kimi-k2p5"))});
+# %% ../nbs/00_core.ipynb #e8641de9
+_info = dict(get_model_info("fireworks_ai/accounts/fireworks/models/kimi-k2p5"))
+_info.update(input_cost_per_token=1.5e-6, cache_read_input_token_cost=2.2e-7, output_cost_per_token=6e-6)
+register_model({"fireworks_ai/accounts/fireworks/models/kimi-k2p6": _info})
