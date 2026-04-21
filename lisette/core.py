@@ -982,3 +982,7 @@ def get_cost_for_built_in_tools(cls, model, response_object=None, usage=None, cu
     if usage is not None and isinstance(getattr(usage, 'server_tool_use', None), dict):
         usage.server_tool_use = ServerToolUse(**usage.server_tool_use)
     return cls._orig_get_cost_for_built_in_tools(model, response_object=response_object, usage=usage, custom_llm_provider=custom_llm_provider, standard_built_in_tools_params=standard_built_in_tools_params)
+
+# %% ../nbs/00_core.ipynb #baeb5ee0
+register_model({"fireworks_ai/accounts/fireworks/models/kimi-k2p6":
+                dict(get_model_info("fireworks_ai/accounts/fireworks/models/kimi-k2p5"))});
