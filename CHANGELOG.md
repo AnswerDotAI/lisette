@@ -2,6 +2,14 @@
 
 <!-- do not remove -->
 
+## 0.1.19
+
+### New Features
+
+- kimi-k2p6 ([#149](https://github.com/AnswerDotAI/lisette/issues/149))
+
+
+
 ## 0.1.17
 
 ### New Features
