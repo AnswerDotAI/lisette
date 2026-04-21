@@ -76,4 +76,4 @@ class LisetteUsageLogger(CustomLogger):
 #         return f"\n\n{token_dtls_tag}<summary>{summ}</summary>\n\n`{self!r}`\n\n</details>\n"
 
 # %% ../nbs/01_usage.ipynb #9ef8ac82
-def total_cost(self, sc=0.01): return self.response_cost + sc * ifnone(self.web_search_requests, 0)
+def total_cost(self, sc=0.01): return self.response_cost + sc * (getattr(self, 'web_search_requests', 0) or 0)

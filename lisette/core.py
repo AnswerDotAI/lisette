@@ -4,12 +4,12 @@
 
 # %% auto #0
 __all__ = ['haik45', 'sonn45', 'sonn', 'sonn46', 'opus46', 'opus', 'gpt54', 'gpt54m', 'tool_dtls_tag', 're_tools',
-           'token_dtls_tag', 're_token', 'stream_chunk_builder', 'effort', 'tc_res_sysp', 'status_re', 'patch_litellm',
-           'remove_cache_ckpts', 'contents', 'stop_reason', 'mk_msg', 'split_tools', 'fmt2hist', 'mk_msgs',
-           'stream_with_complete', 'lite_mk_func', 'ToolResponse', 'structured', 'cite_footnote', 'cite_footnotes',
-           'mk_stream_chunk', 'StopResponse', 'FullResponse', 'search_count', 'UsageStats', 'Chat', 'add_warning',
-           'random_tool_id', 'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results', 'astream_with_complete',
-           'AsyncChat', 'mk_tr_details', 'StreamFormatter', 'AsyncStreamFormatter', 'display_stream', 'adisplay_stream']
+           'token_dtls_tag', 're_token', 'effort', 'tc_res_sysp', 'status_re', 'patch_litellm', 'remove_cache_ckpts',
+           'contents', 'stop_reason', 'mk_msg', 'split_tools', 'fmt2hist', 'mk_msgs', 'stream_with_complete',
+           'lite_mk_func', 'ToolResponse', 'structured', 'cite_footnote', 'cite_footnotes', 'mk_stream_chunk',
+           'StopResponse', 'FullResponse', 'search_count', 'UsageStats', 'Chat', 'add_warning', 'random_tool_id',
+           'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results', 'astream_with_complete', 'AsyncChat', 'mk_tr_details',
+           'StreamFormatter', 'AsyncStreamFormatter', 'display_stream', 'adisplay_stream']
 
 # %% ../nbs/00_core.ipynb #82380377
 import asyncio, base64, json, litellm, mimetypes, random, string, ast, litellm, warnings
@@ -18,6 +18,7 @@ from html import escape
 from litellm import (acompletion, completion, stream_chunk_builder, Message,
                      ModelResponse, ModelResponseStream, get_model_info, register_model, Usage)
 from litellm.utils import function_to_dict, StreamingChoices, Delta, ChatCompletionMessageToolCall, Function, Choices
+from litellm.types.utils import ServerToolUse
 from toolslm.funccall import mk_ns, call_func, call_func_async, get_schema
 
 from fastcore.utils import *
@@ -254,32 +255,33 @@ def mk_msgs(
 import litellm.main as _lm
 
 # %% ../nbs/00_core.ipynb #baf323f3
-# Patch for https://github.com/BerriAI/litellm/issues/25869
-if '_orig_scb' not in dir(_lm): _lm._orig_scb = _lm.stream_chunk_builder
-
-def _patched_scb(chunks, **kw):
-    result = _lm._orig_scb(chunks, **kw)
-    if not result or not result.choices: return result
-    psf = getattr(result.choices[0].message, 'provider_specific_fields', None)
-    if not psf: return result
-    all_ssi,all_ts = {},[]
-    for chunk in chunks:
-        if not chunk["choices"]: continue
-        delta = chunk["choices"][0]["delta"]
-        fields = (delta.get('provider_specific_fields') if isinstance(delta, dict)
-                  else getattr(delta, 'provider_specific_fields', None)) or {}
-        for inv in fields.get('server_side_tool_invocations') or []:
-            inv_id = inv.get('id', '')
-            if inv_id in all_ssi:
-                for k,v in inv.items():
-                    if v is not None and k not in all_ssi[inv_id]: all_ssi[inv_id][k] = v
-            else: all_ssi[inv_id] = dict(inv)
-        all_ts += fields.get('thought_signatures') or []
-    if all_ssi: psf['server_side_tool_invocations'] = list(all_ssi.values())
-    if all_ts: psf['thought_signatures'] = all_ts
-    return result
-
-_lm.stream_chunk_builder = litellm.stream_chunk_builder = stream_chunk_builder = _patched_scb
+# # Patch for https://github.com/BerriAI/litellm/issues/25869
+# if '_orig_scb' not in dir(_lm): _lm._orig_scb = _lm.stream_chunk_builder
+# 
+# def _patched_scb(chunks, **kw):
+#     result = _lm._orig_scb(chunks, **kw)
+#     if not result or not result.choices: return result
+#     psf = getattr(result.choices[0].message, 'provider_specific_fields', None)
+#     if not psf: return result
+#     all_ssi,all_ts = {},[]
+#     # if isinstance(stu := getattr(result.usage, 'server_tool_use', None), dict): result.usage.server_tool_use = ServerToolUse(**stu)
+#     for chunk in chunks:
+#         if not chunk["choices"]: continue
+#         delta = chunk["choices"][0]["delta"]
+#         fields = (delta.get('provider_specific_fields') if isinstance(delta, dict)
+#                   else getattr(delta, 'provider_specific_fields', None)) or {}
+#         for inv in fields.get('server_side_tool_invocations') or []:
+#             inv_id = inv.get('id', '')
+#             if inv_id in all_ssi:
+#                 for k,v in inv.items():
+#                     if v is not None and k not in all_ssi[inv_id]: all_ssi[inv_id][k] = v
+#             else: all_ssi[inv_id] = dict(inv)
+#         all_ts += fields.get('thought_signatures') or []
+#     if all_ssi: psf['server_side_tool_invocations'] = list(all_ssi.values())
+#     if all_ts: psf['thought_signatures'] = all_ts
+#     return result
+# 
+# _lm.stream_chunk_builder = litellm.stream_chunk_builder = stream_chunk_builder = _patched_scb
 
 # %% ../nbs/00_core.ipynb #9ad6fc2c
 def stream_with_complete(gen, postproc=noop):
@@ -380,6 +382,15 @@ from litellm.llms.anthropic.chat.transformation import AnthropicConfig
 def _has_search(m):
     i = get_model_info(m)
     return bool(i.get('search_context_cost_per_query') or i.get('supports_web_search'))
+
+# %% ../nbs/00_core.ipynb #b4dca86c
+_gpt54_models = {gpt54, gpt54m, 'responses/gpt-5.4', 'responses/gpt-5.4-mini', 'gpt-5.4', 'gpt-5.4-mini'}
+
+@patch
+def get_supported_openai_params(self:litellm.openAIGPT5Config.__class__, model:str):
+    res = self._orig_get_supported_openai_params(model)
+    if model in _gpt54_models and 'web_search_options' not in res: res.append('web_search_options')
+    return res
 
 # %% ../nbs/00_core.ipynb #54e1bc00
 def _setup_gptinfo(mnf, mnt):
@@ -483,7 +494,7 @@ class UsageStats:
         parts = [f"total={self.total_tokens:,}", f"in={self.prompt_tokens:,}", f"out={self.completion_tokens:,}", f"cached={hit}"]
         if self.cache_creation_tokens: parts.append(f"cache_new={self.cache_creation_tokens:,}")
         if self.reasoning_tokens: parts.append(f"reasoning={self.reasoning_tokens:,}")
-        if getattr(self, 'web_search_requests', None): parts.append(f"searches={self.web_search_requests}")
+        if hasattr(self, 'web_search_requests'): parts.append(f"searches={self.web_search_requests}")
         if self.cost: parts.append(f"${self.cost:.4f}")
         return ' | '.join(parts)
 
@@ -739,32 +750,32 @@ import litellm.llms.anthropic.chat.transformation as _anth_t
 import litellm.litellm_core_utils.prompt_templates.factory as _fact
 
 # %% ../nbs/00_core.ipynb #e3278219
-if '_orig_tp' not in globals(): _orig_tp = _anth_t.AnthropicConfig.transform_parsed_response
-def _patched_tp(self, completion_response, raw_response, model_response, **kw):
-    r = _orig_tp(self, completion_response, raw_response, model_response, **kw)
-    msg = r.choices[0].message
-    psf = getattr(msg, 'provider_specific_fields', None) or {}
-    if len(psf.get('web_search_results') or []) > 1 and getattr(msg, 'thinking_blocks', None):
-        psf['_original_content'] = completion_response.get('content')
-    return r
-
-if '_orig_apt' not in globals(): _orig_apt = _fact.anthropic_messages_pt
-def _patched_apt(messages, model, llm_provider):
-    for m in messages:
-        if not hasattr(m, 'get') or m.get('role') != 'assistant': continue
-        psf = m.get('provider_specific_fields')
-        if not isinstance(psf, dict) or not (oc := psf.get('_original_content')): continue
-        cc = next((b['cache_control'] for b in (m.get('content') or [])
-            if isinstance(b, dict) and 'cache_control' in b), None)
-        m['content'],m['thinking_blocks'] = oc,None
-        m['tool_calls'] = [tc for tc in (m.get('tool_calls') or [])
-            if not (getattr(tc, 'id', '') or tc.get('id', '')).startswith('srvtoolu_')] or None
-        for k in ('web_search_results', 'tool_results'): psf.pop(k, None)
-        if cc: oc[-1]['cache_control'] = cc
-    return _orig_apt(messages, model, llm_provider)
-
-_anth_t.AnthropicConfig.transform_parsed_response = _patched_tp
-_fact.anthropic_messages_pt = _patched_apt
+# if '_orig_tp' not in globals(): _orig_tp = _anth_t.AnthropicConfig.transform_parsed_response
+# def _patched_tp(self, completion_response, raw_response, model_response, **kw):
+#     r = _orig_tp(self, completion_response, raw_response, model_response, **kw)
+#     msg = r.choices[0].message
+#     psf = getattr(msg, 'provider_specific_fields', None) or {}
+#     if len(psf.get('web_search_results') or []) > 1 and getattr(msg, 'thinking_blocks', None):
+#         psf['_original_content'] = completion_response.get('content')
+#     return r
+# 
+# if '_orig_apt' not in globals(): _orig_apt = _fact.anthropic_messages_pt
+# def _patched_apt(messages, model, llm_provider):
+#     for m in messages:
+#         if not hasattr(m, 'get') or m.get('role') != 'assistant': continue
+#         psf = m.get('provider_specific_fields')
+#         if not isinstance(psf, dict) or not (oc := psf.get('_original_content')): continue
+#         cc = next((b['cache_control'] for b in (m.get('content') or [])
+#             if isinstance(b, dict) and 'cache_control' in b), None)
+#         m['content'],m['thinking_blocks'] = oc,None
+#         m['tool_calls'] = [tc for tc in (m.get('tool_calls') or [])
+#             if not (getattr(tc, 'id', '') or tc.get('id', '')).startswith('srvtoolu_')] or None
+#         for k in ('web_search_results', 'tool_results'): psf.pop(k, None)
+#         if cc: oc[-1]['cache_control'] = cc
+#     return _orig_apt(messages, model, llm_provider)
+# 
+# _anth_t.AnthropicConfig.transform_parsed_response = _patched_tp
+# _fact.anthropic_messages_pt = _patched_apt
 
 # %% ../nbs/00_core.ipynb #bb3811e0
 async def _alite_call_func(tc, tool_schemas, ns, tc_res=None, tc_res_eval=False):
