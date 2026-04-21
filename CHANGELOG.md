@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.1.16
+
+### New Features
+
+- Workaround for https://github.com/BerriAI/litellm/issues/26153 ([#148](https://github.com/AnswerDotAI/lisette/issues/148))
+
+
 ## 0.1.15
 
 ### New Features
