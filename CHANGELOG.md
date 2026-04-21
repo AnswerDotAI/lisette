@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.1.14
+
+### New Features
+
+- Anthropic max thinking support ([#147](https://github.com/AnswerDotAI/lisette/issues/147))
+
+
 ## 0.1.13
 
 ### New Features
