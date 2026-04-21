@@ -969,3 +969,16 @@ def transform_request(self:AnthropicConfig, model, messages, optional_params, li
         oc["effort"] = orig
         if "output_config" in data: data["output_config"]["effort"] = orig
     return data
+
+# %% ../nbs/00_core.ipynb #6580e6f9
+from fastcore.meta import patch_to
+from litellm.litellm_core_utils.llm_cost_calc.tool_call_cost_tracking import StandardBuiltInToolCostTracking
+from litellm.types.utils import ServerToolUse
+
+# %% ../nbs/00_core.ipynb #bfa96412
+# Workaround for https://github.com/BerriAI/litellm/issues/26153
+@patch_to(StandardBuiltInToolCostTracking, cls_method=True)
+def get_cost_for_built_in_tools(cls, model, response_object=None, usage=None, custom_llm_provider=None, standard_built_in_tools_params=None):
+    if usage is not None and isinstance(getattr(usage, 'server_tool_use', None), dict):
+        usage.server_tool_use = ServerToolUse(**usage.server_tool_use)
+    return cls._orig_get_cost_for_built_in_tools(model, response_object=response_object, usage=usage, custom_llm_provider=custom_llm_provider, standard_built_in_tools_params=standard_built_in_tools_params)
