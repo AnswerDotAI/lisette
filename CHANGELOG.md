@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.1.20
+
+### New Features
+
+- Add `CodexChat` ([#150](https://github.com/AnswerDotAI/lisette/issues/150))
+
+
 ## 0.1.19
 
 ### New Features
