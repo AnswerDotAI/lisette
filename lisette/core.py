@@ -109,7 +109,9 @@ from litellm.llms.fireworks_ai.chat.transformation import FireworksAIConfig
 @patch
 def get_provider_info(self:FireworksAIConfig, model):
     res = self._orig_get_provider_info(model)
-    if 'kimi' in model: res['supports_reasoning'] = True
+    if 'kimi' in model:
+        res['supports_reasoning'] = True
+        res['supports_vision'] = True
     return res
 
 # %% ../nbs/00_core.ipynb #d4c8b8f2
@@ -697,12 +699,18 @@ def print_hist(self:Chat):
     "Print each message on a different line"
     for r in self.hist: print(r, end='\n\n')
 
-# %% ../nbs/00_core.ipynb #39212f01
+# %% ../nbs/00_core.ipynb #0c33af14
+from litellm.litellm_core_utils.core_helpers import _FINISH_REASON_MAP
+
+# %% ../nbs/00_core.ipynb #f296a159
+_FINISH_REASON_MAP['refusal'] = 'content_filter'
+
+# %% ../nbs/00_core.ipynb #9c3864f7
 from litellm.llms.fireworks_ai import cost_calculator as fw_cc
 import litellm.cost_calculator as lcc
 from fastcore.meta import patch_to
 
-# %% ../nbs/00_core.ipynb #4f6e722d
+# %% ../nbs/00_core.ipynb #c7ada370
 @patch_to(fw_cc)
 def cost_per_token(model, usage):
     prompt_cost, completion_cost = fw_cc._orig_cost_per_token(model, usage)
@@ -722,11 +730,9 @@ def cost_per_token(model, usage):
 
 lcc.fireworks_ai_cost_per_token = fw_cc.cost_per_token
 
-# %% ../nbs/00_core.ipynb #0c33af14
-from litellm.litellm_core_utils.core_helpers import _FINISH_REASON_MAP
-
-# %% ../nbs/00_core.ipynb #f296a159
-_FINISH_REASON_MAP['refusal'] = 'content_filter'
+# %% ../nbs/00_core.ipynb #8fe93f4a
+for o in 'fireworks_ai/accounts/fireworks/models/kimi-k2p5','fireworks_ai/accounts/fireworks/models/kimi-k2p6':
+    register_model({o: {"supports_vision": True, "supports_reasoning": True}})
 
 # %% ../nbs/00_core.ipynb #a37a77b6
 def random_tool_id():
