@@ -4,12 +4,13 @@
 
 # %% auto #0
 __all__ = ['haik45', 'sonn45', 'sonn', 'sonn46', 'opus46', 'opus', 'gpt54', 'gpt54m', 'tool_dtls_tag', 're_tools',
-           'token_dtls_tag', 're_token', 'effort', 'tc_res_sysp', 'status_re', 'patch_litellm', 'remove_cache_ckpts',
-           'contents', 'stop_reason', 'mk_msg', 'split_tools', 'fmt2hist', 'mk_msgs', 'stream_with_complete',
-           'lite_mk_func', 'ToolResponse', 'structured', 'cite_footnote', 'cite_footnotes', 'mk_stream_chunk',
-           'StopResponse', 'FullResponse', 'search_count', 'UsageStats', 'Chat', 'add_warning', 'random_tool_id',
-           'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results', 'astream_with_complete', 'AsyncChat', 'mk_tr_details',
-           'StreamFormatter', 'AsyncStreamFormatter', 'display_stream', 'adisplay_stream']
+           'token_dtls_tag', 're_token', 'stream_chunk_builder', 'effort', 'tc_res_sysp', 'status_re', 'patch_litellm',
+           'remove_cache_ckpts', 'contents', 'stop_reason', 'mk_msg', 'split_tools', 'fmt2hist', 'mk_msgs',
+           'stream_with_complete', 'lite_mk_func', 'ToolResponse', 'structured', 'cite_footnote', 'cite_footnotes',
+           'mk_stream_chunk', 'StopResponse', 'FullResponse', 'search_count', 'UsageStats', 'Chat', 'add_warning',
+           'random_tool_id', 'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results', 'astream_with_complete',
+           'AsyncChat', 'mk_tr_details', 'StreamFormatter', 'AsyncStreamFormatter', 'display_stream', 'adisplay_stream',
+           'codex_kw', 'codex_completion', 'codex_acompletion', 'CodexChat']
 
 # %% ../nbs/00_core.ipynb #82380377
 import asyncio, base64, json, litellm, mimetypes, random, string, ast, litellm, warnings
@@ -255,33 +256,32 @@ def mk_msgs(
 import litellm.main as _lm
 
 # %% ../nbs/00_core.ipynb #baf323f3
-# # Patch for https://github.com/BerriAI/litellm/issues/25869
-# if '_orig_scb' not in dir(_lm): _lm._orig_scb = _lm.stream_chunk_builder
-# 
-# def _patched_scb(chunks, **kw):
-#     result = _lm._orig_scb(chunks, **kw)
-#     if not result or not result.choices: return result
-#     psf = getattr(result.choices[0].message, 'provider_specific_fields', None)
-#     if not psf: return result
-#     all_ssi,all_ts = {},[]
-#     # if isinstance(stu := getattr(result.usage, 'server_tool_use', None), dict): result.usage.server_tool_use = ServerToolUse(**stu)
-#     for chunk in chunks:
-#         if not chunk["choices"]: continue
-#         delta = chunk["choices"][0]["delta"]
-#         fields = (delta.get('provider_specific_fields') if isinstance(delta, dict)
-#                   else getattr(delta, 'provider_specific_fields', None)) or {}
-#         for inv in fields.get('server_side_tool_invocations') or []:
-#             inv_id = inv.get('id', '')
-#             if inv_id in all_ssi:
-#                 for k,v in inv.items():
-#                     if v is not None and k not in all_ssi[inv_id]: all_ssi[inv_id][k] = v
-#             else: all_ssi[inv_id] = dict(inv)
-#         all_ts += fields.get('thought_signatures') or []
-#     if all_ssi: psf['server_side_tool_invocations'] = list(all_ssi.values())
-#     if all_ts: psf['thought_signatures'] = all_ts
-#     return result
-# 
-# _lm.stream_chunk_builder = litellm.stream_chunk_builder = stream_chunk_builder = _patched_scb
+# Patch for https://github.com/BerriAI/litellm/issues/25869
+if '_orig_scb' not in dir(_lm): _lm._orig_scb = _lm.stream_chunk_builder
+
+def _patched_scb(chunks, **kw):
+    result = _lm._orig_scb(chunks, **kw)
+    if not result or not result.choices: return result
+    psf = getattr(result.choices[0].message, 'provider_specific_fields', None)
+    if not psf: return result
+    all_ssi,all_ts = {},[]
+    for chunk in chunks:
+        if not chunk["choices"]: continue
+        delta = chunk["choices"][0]["delta"]
+        fields = (delta.get('provider_specific_fields') if isinstance(delta, dict)
+                  else getattr(delta, 'provider_specific_fields', None)) or {}
+        for inv in fields.get('server_side_tool_invocations') or []:
+            inv_id = inv.get('id', '')
+            if inv_id in all_ssi:
+                for k,v in inv.items():
+                    if v is not None and k not in all_ssi[inv_id]: all_ssi[inv_id][k] = v
+            else: all_ssi[inv_id] = dict(inv)
+        all_ts += fields.get('thought_signatures') or []
+    if all_ssi: psf['server_side_tool_invocations'] = list(all_ssi.values())
+    if all_ts: psf['thought_signatures'] = all_ts
+    return result
+
+_lm.stream_chunk_builder = litellm.stream_chunk_builder = stream_chunk_builder = _patched_scb
 
 # %% ../nbs/00_core.ipynb #9ad6fc2c
 def stream_with_complete(gen, postproc=noop):
@@ -360,14 +360,11 @@ def _lite_call_func(tc, tool_schemas, ns, tc_res=None, tc_res_eval=False):
 
 # %% ../nbs/00_core.ipynb #4688cf77
 @delegates(completion)
-def structured(
-    m:str,          # LiteLLM model string
-    msgs:list,      # List of messages 
-    tool:Callable,  # Tool to be used for creating the structured output (class, dataclass or Pydantic, function, etc)
-    **kwargs):
+def structured(m:str, msgs:list, tool:Callable, completefunc:Callable=completion, **kwargs):
     "Return the value of the tool call (generally used for structured outputs)"
     t = lite_mk_func(tool)
-    r = completion(m, msgs, tools=[t], tool_choice=t, **kwargs)
+    r = completefunc(m, msgs, tools=[t], tool_choice=t, **kwargs)
+    if not isinstance(r, ModelResponse): r = stream_chunk_builder(list(r))
     args = json.loads(r.choices[0].message.tool_calls[0].function.arguments)
     return tool(**args)
 
@@ -536,6 +533,10 @@ class Chat:
         tc_res_eval=False,        # literal_eval tool results before storing in tc_res
         markup=0,                 # Cost markup multiplier (e.g. 0.5 for 50%)
         tool_reminder=None,       # Prepended as a block to the first trailing tool result (transient)
+        max_tokens=None,          # Default max_tokens for completion()
+        completefunc:Optional[Callable]=None, # Completion function
+        stream=False,             # Default `stream` for `__call__`
+        callkw:dict=None,         # Extra kwargs passed to completion() on every call
     ):
         "LiteLLM chat client."
         self.model = model
@@ -546,6 +547,7 @@ class Chat:
         elif ns is None: ns = globals()
         self.tool_schemas = [lite_mk_func(t) for t in tools] if tools else None
         self.use = UsageStats()
+        if completefunc is None: completefunc = acompletion if any(o.__name__=='AsyncChat' for o in type(self).mro()) else completion
         store_attr()
     
     def _prep_msg(self, msg=None, prefill=None):
@@ -554,8 +556,7 @@ class Chat:
         if sp:
             if 0 in self.cache_idxs: sp[0] = _add_cache_control(sp[0])
             cache_idxs = L(self.cache_idxs).filter().map(lambda o: o-1 if o>0 else o)
-        else:
-            cache_idxs = self.cache_idxs
+        else: cache_idxs = self.cache_idxs
         if msg: self.hist = self.hist+[msg]
         self.hist = mk_msgs(self.hist, self.cache and 'claude' in self.model, cache_idxs, self.ttl)
         pf = [{"role":"assistant","content":prefill}] if prefill else []
@@ -600,7 +601,7 @@ def _think_kw(model, think):
         return dict(thinking={"type":"adaptive", "display": "summarized"}, output_config={"effort":e})
     return dict(reasoning_effort=e)
 
-# %% ../nbs/00_core.ipynb #29e5eeb1
+# %% ../nbs/00_core.ipynb #99392c21
 @patch
 def _prep_call(self:Chat, prefill, search, max_tokens, kwargs, stream=False, think=None):
     "Prepare model info, prefill, search, and provider kwargs for a completion call"
@@ -608,6 +609,7 @@ def _prep_call(self:Chat, prefill, search, max_tokens, kwargs, stream=False, thi
     except Exception:
         register_model({self.model: {}})
         model_info = get_model_info(self.model)
+    if max_tokens is None: max_tokens = self.max_tokens
     if max_tokens is None: max_tokens = model_info.get('max_output_tokens')
     if not model_info.get("supports_assistant_prefill"): prefill = None
     if _has_search(self.model) and (s:=ifnone(search,self.search)): kwargs['web_search_options'] = {"search_context_size": effort[s]}
@@ -615,7 +617,7 @@ def _prep_call(self:Chat, prefill, search, max_tokens, kwargs, stream=False, thi
     if 'web_search_options' in kwargs:
         if 'gemini' in self.model: kwargs['include_server_side_tool_invocations'] = True
         elif 'responses/' in self.model: kwargs['allowed_openai_params'] = ['web_search_options']
-    kwargs['additional_drop_params'] = ['temperature']
+    kwargs['additional_drop_params'] = ['temperature'] + listify(kwargs.get('additional_drop_params'))
     if self.api_base: kwargs['api_base'] = self.api_base
     if self.api_key: kwargs['api_key'] = self.api_key
     if self.extra_headers: kwargs['extra_headers'] = self.extra_headers
@@ -629,16 +631,17 @@ def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None,
         max_steps=2, step=1, final_prompt=None, tool_choice=None, max_tokens=None, **kwargs):
     "Internal method that always yields responses"
     if step>max_steps+1: return
+    if self.callkw: kwargs = {**self.callkw, **kwargs}
     prefill, max_tokens = self._prep_call(prefill, search, max_tokens, kwargs, stream=stream, think=think)
-    res = completion(
-        model=self.model, messages=self._prep_msg(msg, prefill), stream=stream, max_tokens=int(max_tokens),
+    mt = {} if max_tokens in (None,0) else dict(max_tokens=int(max_tokens))
+    res = self.completefunc(model=self.model, messages=self._prep_msg(msg, prefill), stream=stream, **mt,
         tools=self.tool_schemas, tool_choice=tool_choice, num_retries=2,
         temperature=None if think else ifnone(temp,self.temp),
-        caching=self.cache and 'claude' not in self.model,
-        **kwargs)
+        caching=self.cache and 'claude' not in self.model, **kwargs)
     if stream:
         if prefill: yield _mk_prefill(prefill)
         res = yield from stream_with_complete(res, postproc=cite_footnotes)
+    elif not isinstance(res, ModelResponse): res = stream_chunk_builder(list(res))
     m = contents(res)
     if prefill: m.content = prefill + m.content
     action, msg = _handle_stop_reason(res)
@@ -675,12 +678,13 @@ def __call__(self:Chat,
              temp=None,         # Override temp set on chat initialization
              think=None,        # Thinking (l,m,h)
              search=None,       # Override search set on chat initialization (l,m,h)
-             stream=False,      # Stream results
+             stream=None,       # Stream results (defaults to `self.stream`)
              max_steps=2, # Maximum number of tool calls
              final_prompt=_final_prompt, # Final prompt when tool calls have ran out 
              return_all=False,  # Returns all intermediate ModelResponses if not streaming and has tool calls
              **kwargs):
     "Main call method - handles streaming vs non-streaming"
+    if stream is None: stream = self.stream
     self.use = UsageStats()
     result_gen = self._call(msg, prefill, temp, think, search, stream, max_steps, 1, final_prompt, **kwargs)     
     if stream: return result_gen              # streaming
@@ -799,14 +803,20 @@ class AsyncChat(Chat):
     async def _call(self, msg=None, prefill=None, temp=None, think=None, search=None, stream=False, max_steps=2, step=1,
             final_prompt=None, tool_choice=None, max_tokens=None, n_workers=8, pause=0.001, tc_timeout=7200, **kwargs):
         if step>max_steps+1: return
+        if self.callkw: kwargs = {**self.callkw, **kwargs}
         prefill, max_tokens = self._prep_call(prefill, search, max_tokens, kwargs, stream=stream, think=think)
-        res = await acompletion(model=self.model, messages=self._prep_msg(msg, prefill), stream=stream, num_retries=2,
-            tools=self.tool_schemas, tool_choice=tool_choice, max_tokens=int(max_tokens),
+        mt = {} if max_tokens in (None,0) else dict(max_tokens=int(max_tokens))
+        res = await self.completefunc(model=self.model, messages=self._prep_msg(msg, prefill), stream=stream, num_retries=2,
+            tools=self.tool_schemas, tool_choice=tool_choice, **mt,
             temperature=None if think else ifnone(temp,self.temp), caching=self.cache and 'claude' not in self.model, **kwargs)
         if stream:
             if prefill: yield _mk_prefill(prefill)
             res = astream_with_complete(res,postproc=cite_footnote)
             async for chunk in res: yield chunk
+            res = res.value
+        elif not isinstance(res, ModelResponse):
+            res = astream_with_complete(res,postproc=cite_footnote)
+            async for _ in res: pass
             res = res.value
         m=contents(res)
         if prefill: m.content = prefill + m.content
@@ -849,12 +859,13 @@ async def __call__(
     temp=None,         # Override temp set on chat initialization
     think=None,        # Thinking (l,m,h)
     search=None,       # Override search set on chat initialization (l,m,h)
-    stream=False,      # Stream results
+    stream=None,       # Stream results (defaults to `self.stream`)
     max_steps=2, # Maximum number of tool calls
     final_prompt=_final_prompt, # Final prompt when tool calls have ran out 
     return_all=False,  # Returns all intermediate ModelResponses if not streaming and has tool calls
     **kwargs
 ):
+    if stream is None: stream = self.stream
     self.use = UsageStats()
     result_gen = self._call(msg, prefill, temp, think, search, stream, max_steps, 1, final_prompt, **kwargs)
     if stream or return_all: return result_gen
@@ -953,6 +964,25 @@ async def adisplay_stream(rs, **kwargs):
         md+=o
         display(Markdown(md),clear=True)
     return fmt
+
+# %% ../nbs/00_core.ipynb #65946642
+def codex_kw(sp=None, tok=None):
+    tok = tok or json.loads(Path('~/.codex/auth.json').expanduser().read_text())['tokens']['access_token']
+    eb = dict(store=False)
+    if sp is not None: eb['instructions'] = sp
+    return dict(api_base="https://chatgpt.com/backend-api/codex", api_key=tok, extra_body=eb)
+
+@delegates(completion)
+def codex_completion(model, messages, sp=None, tok=None, **kwargs):
+    return completion(model, messages, **(kwargs | codex_kw(sp, tok)))
+
+@delegates(acompletion)
+async def codex_acompletion(model, messages, sp=None, tok=None, **kwargs):
+    return await acompletion(model, messages, **(kwargs | codex_kw(sp, tok)))
+
+def CodexChat(model='gpt-5.4', sp='You are a helpful assistant.', tok=None, useasync=False, **kwargs):
+    cls,cf = (AsyncChat,codex_acompletion) if useasync else (Chat,codex_completion)
+    return cls(f"openai/responses/{model}", sp=sp, completefunc=partial(cf, sp=sp, tok=tok), max_tokens=0, stream=True, **kwargs)
 
 # %% ../nbs/00_core.ipynb #298aae95
 # temp workaround whilst litellm doesn't support xhigh think
