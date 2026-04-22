@@ -749,6 +749,19 @@ def mk_tc_result(tc, result): return {'tool_call_id': tc['id'], 'role': 'tool', 
 # %% ../nbs/00_core.ipynb #e5d8e695
 def mk_tc_results(tcq, results): return [mk_tc_result(a,b) for a,b in zip(tcq.tool_calls, results)]
 
+# %% ../nbs/00_core.ipynb #6fa66f10
+from fastcore.meta import patch_to
+from litellm.litellm_core_utils.llm_cost_calc.tool_call_cost_tracking import StandardBuiltInToolCostTracking
+from litellm.types.utils import ServerToolUse
+
+# %% ../nbs/00_core.ipynb #beed6c09
+# Workaround for https://github.com/BerriAI/litellm/issues/26153
+@patch_to(StandardBuiltInToolCostTracking, cls_method=True)
+def get_cost_for_built_in_tools(cls, model, response_object=None, usage=None, custom_llm_provider=None, standard_built_in_tools_params=None):
+    if usage is not None and isinstance(getattr(usage, 'server_tool_use', None), dict):
+        usage.server_tool_use = ServerToolUse(**usage.server_tool_use)
+    return cls._orig_get_cost_for_built_in_tools(model, response_object=response_object, usage=usage, custom_llm_provider=custom_llm_provider, standard_built_in_tools_params=standard_built_in_tools_params)
+
 # %% ../nbs/00_core.ipynb #edc17903
 import litellm.llms.anthropic.chat.transformation as _anth_t
 import litellm.litellm_core_utils.prompt_templates.factory as _fact
@@ -999,19 +1012,6 @@ def transform_request(self:AnthropicConfig, model, messages, optional_params, li
         oc["effort"] = orig
         if "output_config" in data: data["output_config"]["effort"] = orig
     return data
-
-# %% ../nbs/00_core.ipynb #6580e6f9
-from fastcore.meta import patch_to
-from litellm.litellm_core_utils.llm_cost_calc.tool_call_cost_tracking import StandardBuiltInToolCostTracking
-from litellm.types.utils import ServerToolUse
-
-# %% ../nbs/00_core.ipynb #bfa96412
-# Workaround for https://github.com/BerriAI/litellm/issues/26153
-@patch_to(StandardBuiltInToolCostTracking, cls_method=True)
-def get_cost_for_built_in_tools(cls, model, response_object=None, usage=None, custom_llm_provider=None, standard_built_in_tools_params=None):
-    if usage is not None and isinstance(getattr(usage, 'server_tool_use', None), dict):
-        usage.server_tool_use = ServerToolUse(**usage.server_tool_use)
-    return cls._orig_get_cost_for_built_in_tools(model, response_object=response_object, usage=usage, custom_llm_provider=custom_llm_provider, standard_built_in_tools_params=standard_built_in_tools_params)
 
 # %% ../nbs/00_core.ipynb #e8641de9
 _info = dict(get_model_info("fireworks_ai/accounts/fireworks/models/kimi-k2p5"))
