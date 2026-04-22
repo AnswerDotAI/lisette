@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.1.21
+
+### New Features
+
+- Support kimi fireworks vision ([#152](https://github.com/AnswerDotAI/lisette/issues/152))
+
+
 ## 0.1.20
 
 ### New Features
