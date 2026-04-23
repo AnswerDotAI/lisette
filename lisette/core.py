@@ -9,8 +9,8 @@ __all__ = ['haik45', 'sonn45', 'sonn', 'sonn46', 'opus46', 'opus', 'gpt54', 'gpt
            'stream_with_complete', 'lite_mk_func', 'ToolResponse', 'structured', 'cite_footnote', 'cite_footnotes',
            'mk_stream_chunk', 'StopResponse', 'FullResponse', 'search_count', 'UsageStats', 'Chat', 'add_warning',
            'random_tool_id', 'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results', 'astream_with_complete',
-           'AsyncChat', 'mk_tr_details', 'StreamFormatter', 'AsyncStreamFormatter', 'display_stream', 'adisplay_stream',
-           'codex_kw', 'codex_completion', 'codex_acompletion', 'CodexChat']
+           'AsyncChat', 'trunc_param', 'mk_tr_details', 'StreamFormatter', 'AsyncStreamFormatter', 'display_stream',
+           'adisplay_stream', 'codex_kw', 'codex_completion', 'codex_acompletion', 'CodexChat']
 
 # %% ../nbs/00_core.ipynb #82380377
 import asyncio, base64, json, litellm, mimetypes, random, string, ast, litellm, warnings
@@ -892,7 +892,7 @@ async def __call__(
     return res # normal chat behavior only return last msg
 
 # %% ../nbs/00_core.ipynb #049f141f
-def _trunc_param(v, mx=40):
+def trunc_param(v, mx=40):
     "Truncate and escape param value for display"
     tp = _trunc_str(str(v).replace('`', r'\`'), mx=mx, replace=None, skip=0)
     try: return ast.literal_eval(tp)
@@ -901,8 +901,8 @@ def _trunc_param(v, mx=40):
 def _tc_summary(tc, tr=None):
     "Format tool call as func(params) → result string"
     args = json.loads(tc.function.arguments)
-    params = ', '.join(f"{k}={_trunc_param(v)}" for k,v in args.items())
-    res = f"→{_trunc_param(tr.get('content',''))}" if tr else ''
+    params = ', '.join(f"{k}={trunc_param(v)}" for k,v in args.items())
+    res = f"→{trunc_param(tr.get('content',''))}" if tr else ''
     return '<code>'+escape(f"{tc.function.name}({params}){res}")+'</code>'
 
 def _trunc_content(content, mx):
