@@ -4,13 +4,13 @@
 
 # %% auto #0
 __all__ = ['haik45', 'sonn45', 'sonn', 'sonn46', 'opus46', 'opus', 'gpt54', 'gpt54m', 'tool_dtls_tag', 're_tools',
-           'token_dtls_tag', 're_token', 'stream_chunk_builder', 'effort', 'tc_res_sysp', 'status_re', 'patch_litellm',
-           'remove_cache_ckpts', 'contents', 'stop_reason', 'mk_msg', 'split_tools', 'fmt2hist', 'mk_msgs',
-           'stream_with_complete', 'lite_mk_func', 'ToolResponse', 'structured', 'cite_footnote', 'cite_footnotes',
-           'mk_stream_chunk', 'StopResponse', 'FullResponse', 'search_count', 'UsageStats', 'Chat', 'add_warning',
-           'random_tool_id', 'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results', 'astream_with_complete',
-           'AsyncChat', 'trunc_param', 'mk_tr_details', 'StreamFormatter', 'AsyncStreamFormatter', 'display_stream',
-           'adisplay_stream', 'codex_kw', 'codex_completion', 'codex_acompletion', 'CodexChat']
+           'token_dtls_tag', 're_token', 'stream_chunk_builder', 'effort', 'tc_res_sysp', 'status_re', 'codex54',
+           'codex55', 'patch_litellm', 'remove_cache_ckpts', 'contents', 'stop_reason', 'mk_msg', 'split_tools',
+           'fmt2hist', 'mk_msgs', 'stream_with_complete', 'lite_mk_func', 'ToolResponse', 'structured', 'cite_footnote',
+           'cite_footnotes', 'mk_stream_chunk', 'StopResponse', 'FullResponse', 'search_count', 'UsageStats', 'Chat',
+           'add_warning', 'random_tool_id', 'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results',
+           'astream_with_complete', 'AsyncChat', 'trunc_param', 'mk_tr_details', 'StreamFormatter',
+           'AsyncStreamFormatter', 'display_stream', 'adisplay_stream']
 
 # %% ../nbs/00_core.ipynb #82380377
 import asyncio, base64, json, litellm, mimetypes, random, string, ast, litellm, warnings
@@ -618,7 +618,7 @@ def _prep_call(self:Chat, prefill, search, max_tokens, kwargs, stream=False, thi
     else: kwargs.pop('web_search_options', None)
     if 'web_search_options' in kwargs:
         if 'gemini' in self.model: kwargs['include_server_side_tool_invocations'] = True
-        elif 'responses/' in self.model: kwargs['allowed_openai_params'] = ['web_search_options']
+        elif 'responses/' in self.model or self.model.startswith('chatgpt/'): kwargs['allowed_openai_params'] = ['web_search_options']
     kwargs['additional_drop_params'] = ['temperature'] + listify(kwargs.get('additional_drop_params'))
     if self.api_base: kwargs['api_base'] = self.api_base
     if self.api_key: kwargs['api_key'] = self.api_key
@@ -984,24 +984,20 @@ async def adisplay_stream(rs, **kwargs):
         display(Markdown(md),clear=True)
     return fmt
 
-# %% ../nbs/00_core.ipynb #65946642
-def codex_kw(sp=None, tok=None):
-    tok = tok or json.loads(Path('~/.codex/auth.json').expanduser().read_text())['tokens']['access_token']
-    eb = dict(store=False)
-    if sp is not None: eb['instructions'] = sp
-    return dict(api_base="https://chatgpt.com/backend-api/codex", api_key=tok, extra_body=eb)
+# %% ../nbs/00_core.ipynb #14c0255f
+from litellm import register_model, get_model_info
+from litellm.llms.chatgpt.authenticator import Authenticator
 
-@delegates(completion)
-def codex_completion(model, messages, sp=None, tok=None, **kwargs):
-    return completion(model, messages, **(kwargs | codex_kw(sp, tok)))
+# %% ../nbs/00_core.ipynb #e718f6f3
+codex54 = "chatgpt/gpt-5.4"
+codex55 = "chatgpt/gpt-5.5"
 
-@delegates(acompletion)
-async def codex_acompletion(model, messages, sp=None, tok=None, **kwargs):
-    return await acompletion(model, messages, **(kwargs | codex_kw(sp, tok)))
+os.environ.setdefault('CHATGPT_DEFAULT_INSTRUCTIONS', 'You are a helpful assistant.');
 
-def CodexChat(model='gpt-5.4', sp='You are a helpful assistant.', tok=None, useasync=False, **kwargs):
-    cls,cf = (AsyncChat,codex_acompletion) if useasync else (Chat,codex_completion)
-    return cls(f"openai/responses/{model}", sp=sp, completefunc=partial(cf, sp=sp, tok=tok), max_tokens=0, stream=True, **kwargs)
+# %% ../nbs/00_core.ipynb #54247d5b
+register_model({codex55: dict(get_model_info(codex54))})
+for m in (codex54,codex55): register_model({m: dict(litellm_provider='chatgpt', mode='responses', supports_web_search=True)})
+if hasattr(get_model_info, 'cache_clear'): get_model_info.cache_clear()
 
 # %% ../nbs/00_core.ipynb #298aae95
 # temp workaround whilst litellm doesn't support xhigh think
@@ -1022,4 +1018,4 @@ def transform_request(self:AnthropicConfig, model, messages, optional_params, li
 # %% ../nbs/00_core.ipynb #e8641de9
 _info = dict(get_model_info("fireworks_ai/accounts/fireworks/models/kimi-k2p5"))
 _info.update(input_cost_per_token=1.5e-6, cache_read_input_token_cost=2.2e-7, output_cost_per_token=6e-6)
-register_model({"fireworks_ai/accounts/fireworks/models/kimi-k2p6": _info})
+register_model({"fireworks_ai/accounts/fireworks/models/kimi-k2p6": _info});
