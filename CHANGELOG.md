@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.1.23
+
+### New Features
+
+- Map "X" thinking as "xhigh" in models that support it ([#154](https://github.com/AnswerDotAI/lisette/issues/154))
+
+
 ## 0.1.22
 
 ### New Features
