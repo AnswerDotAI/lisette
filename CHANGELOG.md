@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.1.22
+
+### New Features
+
+- Add chatgpt provider integration (codex54/codex55) ([#153](https://github.com/AnswerDotAI/lisette/issues/153))
+
+
 ## 0.1.21
 
 ### New Features
