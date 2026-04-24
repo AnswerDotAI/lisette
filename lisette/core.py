@@ -5,7 +5,7 @@
 # %% auto #0
 __all__ = ['haik45', 'sonn45', 'sonn', 'sonn46', 'opus46', 'opus', 'gpt54', 'gpt54m', 'tool_dtls_tag', 're_tools',
            'token_dtls_tag', 're_token', 'stream_chunk_builder', 'effort', 'tc_res_sysp', 'status_re', 'codex54',
-           'codex55', 'patch_litellm', 'remove_cache_ckpts', 'contents', 'stop_reason', 'mk_msg', 'split_tools',
+           'codex55', 'info', 'patch_litellm', 'remove_cache_ckpts', 'contents', 'stop_reason', 'mk_msg', 'split_tools',
            'fmt2hist', 'mk_msgs', 'stream_with_complete', 'lite_mk_func', 'ToolResponse', 'structured', 'cite_footnote',
            'cite_footnotes', 'mk_stream_chunk', 'StopResponse', 'FullResponse', 'search_count', 'UsageStats', 'Chat',
            'add_warning', 'random_tool_id', 'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results',
@@ -595,13 +595,13 @@ def _handle_stop_reason(res):
 def _think_kw(model, think):
     "Return completion kwargs for thinking/reasoning based on model"
     if not think: return {}
-    # Only Anthropic models handle max thinking
-    if think=='x' and not ('sonnet' in model or 'opus' in model): think = 'h'
-    e = effort.get(think)
     if 'opus-4-7' in model:
-        if think == 'h': e = 'xhigh'
-        return dict(thinking={"type":"adaptive", "display": "summarized"}, output_config={"effort":e})
-    return dict(reasoning_effort=e)
+        # Only Opus 4.7 handles max thinking
+        e = 'xhigh' if think=='h' else effort.get(think)
+        return dict(thinking={"type":"adaptive", "display":"summarized"}, output_config={"effort":e})
+    try: xhigh = get_model_info(model).get('supports_xhigh_reasoning_effort')
+    except: xhigh = False
+    return dict(reasoning_effort=effort.get(think) if think!='x' else 'xhigh' if xhigh else 'high')
 
 # %% ../nbs/00_core.ipynb #99392c21
 @patch
@@ -994,9 +994,11 @@ codex55 = "chatgpt/gpt-5.5"
 
 os.environ.setdefault('CHATGPT_DEFAULT_INSTRUCTIONS', 'You are a helpful assistant.');
 
-# %% ../nbs/00_core.ipynb #54247d5b
-register_model({codex55: dict(get_model_info(codex54))})
-for m in (codex54,codex55): register_model({m: dict(litellm_provider='chatgpt', mode='responses', supports_web_search=True)})
+# %% ../nbs/00_core.ipynb #4f6beb6a
+info = dict(get_model_info(gpt54)) | dict(litellm_provider='chatgpt', mode='responses', supports_web_search=True)
+register_model({codex54: info})
+register_model({codex55: dict(info)});
+for m in (codex54,codex55): register_model({m: dict(info)})
 if hasattr(get_model_info, 'cache_clear'): get_model_info.cache_clear()
 
 # %% ../nbs/00_core.ipynb #298aae95
