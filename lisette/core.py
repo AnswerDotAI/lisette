@@ -4,11 +4,11 @@
 
 # %% auto #0
 __all__ = ['haik45', 'sonn45', 'sonn', 'sonn46', 'opus46', 'opus', 'gpt54', 'gpt54m', 'tool_dtls_tag', 're_tools',
-           'token_dtls_tag', 're_token', 'stream_chunk_builder', 'effort', 'tc_res_sysp', 'status_re', 'codex54',
-           'codex55', 'info', 'patch_litellm', 'remove_cache_ckpts', 'contents', 'stop_reason', 'mk_msg', 'split_tools',
-           'fmt2hist', 'mk_msgs', 'stream_with_complete', 'lite_mk_func', 'ToolResponse', 'structured', 'cite_footnote',
-           'cite_footnotes', 'mk_stream_chunk', 'StopResponse', 'FullResponse', 'search_count', 'UsageStats', 'Chat',
-           'add_warning', 'random_tool_id', 'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results',
+           'token_dtls_tag', 're_token', 'stream_chunk_builder', 'effort', 'tc_res_sysp', 'status_re', 'codex54m',
+           'codex54', 'codex55', 'patch_litellm', 'remove_cache_ckpts', 'contents', 'stop_reason', 'mk_msg',
+           'split_tools', 'fmt2hist', 'mk_msgs', 'stream_with_complete', 'lite_mk_func', 'ToolResponse', 'structured',
+           'cite_footnote', 'cite_footnotes', 'mk_stream_chunk', 'StopResponse', 'FullResponse', 'search_count',
+           'UsageStats', 'Chat', 'add_warning', 'random_tool_id', 'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results',
            'astream_with_complete', 'AsyncChat', 'trunc_param', 'mk_tr_details', 'StreamFormatter',
            'AsyncStreamFormatter', 'display_stream', 'adisplay_stream']
 
@@ -607,6 +607,9 @@ def _think_kw(model, think):
 @patch
 def _prep_call(self:Chat, prefill, search, max_tokens, kwargs, stream=False, think=None):
     "Prepare model info, prefill, search, and provider kwargs for a completion call"
+    if self.model.startswith('chatgpt/') and not stream:
+        raise ValueError(f"""{self.model} requires stream=True;
+set it on the Chat object or call.""")
     try: model_info = get_model_info(self.model)
     except Exception:
         register_model({self.model: {}})
@@ -989,16 +992,34 @@ from litellm import register_model, get_model_info
 from litellm.llms.chatgpt.authenticator import Authenticator
 
 # %% ../nbs/00_core.ipynb #e718f6f3
+codex54m = "chatgpt/gpt-5.4-mini"
 codex54 = "chatgpt/gpt-5.4"
 codex55 = "chatgpt/gpt-5.5"
 
 os.environ.setdefault('CHATGPT_DEFAULT_INSTRUCTIONS', 'You are a helpful assistant.');
 
+# %% ../nbs/00_core.ipynb #0023bb47
+def _codex_auth_data():
+    if env:=os.getenv('CODEX_AUTH_JSON'):
+        data = json.loads(env)
+        return data.get('tokens', data)
+    p = Path('~/.codex/auth.json').expanduser()
+    if not p.exists(): return None
+    return json.loads(p.read_text()).get('tokens')
+
+@patch
+def _read_auth_file(self:Authenticator):
+    data = self._orig__read_auth_file()
+    if data and (data.get('access_token') or data.get('refresh_token')): return data
+    toks = _codex_auth_data()
+    return toks if toks and (toks.get('access_token') or toks.get('refresh_token')) else data
+
 # %% ../nbs/00_core.ipynb #4f6beb6a
-info = dict(get_model_info(gpt54)) | dict(litellm_provider='chatgpt', mode='responses', supports_web_search=True)
-register_model({codex54: info})
-register_model({codex55: dict(info)});
-for m in (codex54,codex55): register_model({m: dict(info)})
+_codex_models = {codex54m:gpt54m, codex54:gpt54, codex55:gpt54}
+for m,src in _codex_models.items():
+    info = dict(get_model_info(src)) | dict(litellm_provider='chatgpt', mode='responses', supports_web_search=True)
+    info.pop('key', None)
+    register_model({m: info})
 if hasattr(get_model_info, 'cache_clear'): get_model_info.cache_clear()
 
 # %% ../nbs/00_core.ipynb #298aae95
