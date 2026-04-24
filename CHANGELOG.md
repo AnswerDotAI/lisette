@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.1.24
+
+### New Features
+
+- Add codex54m model and require stream=True for chatgpt/ models ([#155](https://github.com/AnswerDotAI/lisette/issues/155))
+
+
 ## 0.1.23
 
 ### New Features
