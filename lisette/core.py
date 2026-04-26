@@ -989,7 +989,7 @@ async def adisplay_stream(rs, **kwargs):
 
 # %% ../nbs/00_core.ipynb #14c0255f
 from litellm import register_model, get_model_info
-from litellm.llms.chatgpt.authenticator import Authenticator
+from litellm.llms.chatgpt.authenticator import Authenticator, GetAccessTokenError
 
 # %% ../nbs/00_core.ipynb #e718f6f3
 codex54m = "chatgpt/gpt-5.4-mini"
@@ -1021,6 +1021,11 @@ for m,src in _codex_models.items():
     info.pop('key', None)
     register_model({m: info})
 if hasattr(get_model_info, 'cache_clear'): get_model_info.cache_clear()
+
+# %% ../nbs/00_core.ipynb #6010e112
+@patch
+def _login_device_code(self:Authenticator):
+    raise GetAccessTokenError(status_code=401, message="No Codex auth found — skipping device code login to avoid auth loop. Log in with `codex login`")
 
 # %% ../nbs/00_core.ipynb #298aae95
 # temp workaround whilst litellm doesn't support xhigh think
