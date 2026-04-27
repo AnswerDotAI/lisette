@@ -2,6 +2,14 @@
 
 <!-- do not remove -->
 
+## 0.1.26
+
+### New Features
+
+- Add chatgpt search ([#161](https://github.com/AnswerDotAI/lisette/issues/161))
+- Add qwen/fireworks ([#159](https://github.com/AnswerDotAI/lisette/issues/159))
+
+
 ## 0.1.25
 
 ### Bugs Squashed
