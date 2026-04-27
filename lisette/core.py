@@ -4,8 +4,8 @@
 
 # %% auto #0
 __all__ = ['haik45', 'sonn45', 'sonn', 'sonn46', 'opus46', 'opus', 'gpt54', 'gpt54m', 'tool_dtls_tag', 're_tools',
-           'token_dtls_tag', 're_token', 'stream_chunk_builder', 'effort', 'tc_res_sysp', 'kimi', 'qwen3p6p',
-           'qwen_info', 'status_re', 'codex54m', 'codex54', 'codex55', 'patch_litellm', 'remove_cache_ckpts',
+           'token_dtls_tag', 're_token', 'stream_chunk_builder', 'codex54m', 'codex54', 'codex55', 'effort',
+           'tc_res_sysp', 'kimi', 'qwen3p6p', 'qwen_info', 'status_re', 'patch_litellm', 'remove_cache_ckpts',
            'contents', 'stop_reason', 'mk_msg', 'split_tools', 'fmt2hist', 'mk_msgs', 'stream_with_complete',
            'lite_mk_func', 'ToolResponse', 'structured', 'cite_footnote', 'cite_footnotes', 'mk_stream_chunk',
            'StopResponse', 'FullResponse', 'search_count', 'UsageStats', 'Chat', 'add_warning', 'random_tool_id',
@@ -382,13 +382,18 @@ def _has_search(m):
     i = get_model_info(m)
     return bool(i.get('search_context_cost_per_query') or i.get('supports_web_search'))
 
-# %% ../nbs/00_core.ipynb #b4dca86c
-_gpt54_models = {gpt54, gpt54m, 'responses/gpt-5.4', 'responses/gpt-5.4-mini', 'gpt-5.4', 'gpt-5.4-mini'}
+# %% ../nbs/00_core.ipynb #16eb0b7b
+codex54m = "chatgpt/gpt-5.4-mini"
+codex54 = "chatgpt/gpt-5.4"
+codex55 = "chatgpt/gpt-5.5"
+
+_codex_models = {codex54m:gpt54m, codex54:gpt54, codex55:gpt54}
+_gpt_models = {gpt54, gpt54m, 'responses/gpt-5.4', 'responses/gpt-5.4-mini', 'gpt-5.4', 'gpt-5.4-mini'} | set(_codex_models)
 
 @patch
 def get_supported_openai_params(self:litellm.openAIGPT5Config.__class__, model:str):
     res = self._orig_get_supported_openai_params(model)
-    if model in _gpt54_models and 'web_search_options' not in res: res.append('web_search_options')
+    if model in _gpt_models and 'web_search_options' not in res: res.append('web_search_options')
     return res
 
 # %% ../nbs/00_core.ipynb #54e1bc00
@@ -747,6 +752,7 @@ qwen3p6p = 'fireworks_ai/accounts/fireworks/models/qwen3p6-plus'
 qwen_info = dict(supports_vision=True, supports_reasoning=True, supports_function_calling=True, supports_tool_choice=True,
     supports_system_messages=True, supports_response_schema=True, supports_parallel_function_calling=True,
     supports_prompt_caching=True, supports_native_streaming=True, supports_native_structured_output=True,
+    max_tokens=1000000, max_input_tokens=1000000, max_output_tokens=65536,
     input_cost_per_token=0.5e-6, cache_read_input_token_cost=0.1e-6, output_cost_per_token=3.0e-6)
 register_model({qwen3p6p: qwen_info});
 
@@ -1004,11 +1010,7 @@ async def adisplay_stream(rs, **kwargs):
 from litellm import register_model, get_model_info
 from litellm.llms.chatgpt.authenticator import Authenticator, GetAccessTokenError
 
-# %% ../nbs/00_core.ipynb #e718f6f3
-codex54m = "chatgpt/gpt-5.4-mini"
-codex54 = "chatgpt/gpt-5.4"
-codex55 = "chatgpt/gpt-5.5"
-
+# %% ../nbs/00_core.ipynb #77afa864
 os.environ.setdefault('CHATGPT_DEFAULT_INSTRUCTIONS', 'You are a helpful assistant.');
 
 # %% ../nbs/00_core.ipynb #0023bb47
@@ -1028,9 +1030,9 @@ def _read_auth_file(self:Authenticator):
     return toks if toks and (toks.get('access_token') or toks.get('refresh_token')) else data
 
 # %% ../nbs/00_core.ipynb #4f6beb6a
-_codex_models = {codex54m:gpt54m, codex54:gpt54, codex55:gpt54}
 for m,src in _codex_models.items():
     info = dict(get_model_info(src)) | dict(litellm_provider='chatgpt', mode='responses', supports_web_search=True)
+    info['supported_openai_params'] = list(info.get('supported_openai_params') or []) + ['web_search_options']
     info.pop('key', None)
     register_model({m: info})
 if hasattr(get_model_info, 'cache_clear'): get_model_info.cache_clear()
