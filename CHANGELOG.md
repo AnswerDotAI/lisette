@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.1.25
+
+### Bugs Squashed
+
+- Avoid interactive codex auth ([#156](https://github.com/AnswerDotAI/lisette/pull/156)), thanks to [@kafkasl](https://github.com/kafkasl)
+
+
 ## 0.1.24
 
 ### New Features
