@@ -4,13 +4,13 @@
 
 # %% auto #0
 __all__ = ['haik45', 'sonn45', 'sonn', 'sonn46', 'opus46', 'opus', 'gpt54', 'gpt54m', 'tool_dtls_tag', 're_tools',
-           'token_dtls_tag', 're_token', 'stream_chunk_builder', 'effort', 'tc_res_sysp', 'status_re', 'codex54m',
-           'codex54', 'codex55', 'patch_litellm', 'remove_cache_ckpts', 'contents', 'stop_reason', 'mk_msg',
-           'split_tools', 'fmt2hist', 'mk_msgs', 'stream_with_complete', 'lite_mk_func', 'ToolResponse', 'structured',
-           'cite_footnote', 'cite_footnotes', 'mk_stream_chunk', 'StopResponse', 'FullResponse', 'search_count',
-           'UsageStats', 'Chat', 'add_warning', 'random_tool_id', 'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results',
-           'astream_with_complete', 'AsyncChat', 'trunc_param', 'mk_tr_details', 'StreamFormatter',
-           'AsyncStreamFormatter', 'display_stream', 'adisplay_stream']
+           'token_dtls_tag', 're_token', 'stream_chunk_builder', 'effort', 'tc_res_sysp', 'kimi', 'qwen3p6p',
+           'qwen_info', 'status_re', 'codex54m', 'codex54', 'codex55', 'patch_litellm', 'remove_cache_ckpts',
+           'contents', 'stop_reason', 'mk_msg', 'split_tools', 'fmt2hist', 'mk_msgs', 'stream_with_complete',
+           'lite_mk_func', 'ToolResponse', 'structured', 'cite_footnote', 'cite_footnotes', 'mk_stream_chunk',
+           'StopResponse', 'FullResponse', 'search_count', 'UsageStats', 'Chat', 'add_warning', 'random_tool_id',
+           'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results', 'astream_with_complete', 'AsyncChat', 'trunc_param',
+           'mk_tr_details', 'StreamFormatter', 'AsyncStreamFormatter', 'display_stream', 'adisplay_stream']
 
 # %% ../nbs/00_core.ipynb #82380377
 import asyncio, base64, json, litellm, mimetypes, random, string, ast, litellm, warnings
@@ -733,9 +733,22 @@ def cost_per_token(model, usage):
 
 lcc.fireworks_ai_cost_per_token = fw_cc.cost_per_token
 
+# %% ../nbs/00_core.ipynb #3dfcef02
+kimi = 'fireworks_ai/accounts/fireworks/models/kimi-k2p6'
+
 # %% ../nbs/00_core.ipynb #8fe93f4a
-for o in 'fireworks_ai/accounts/fireworks/models/kimi-k2p5','fireworks_ai/accounts/fireworks/models/kimi-k2p6':
+for o in 'fireworks_ai/accounts/fireworks/models/kimi-k2p5',kimi:
     register_model({o: {"supports_vision": True, "supports_reasoning": True}})
+
+# %% ../nbs/00_core.ipynb #77dcbb3f
+qwen3p6p = 'fireworks_ai/accounts/fireworks/models/qwen3p6-plus'
+
+# %% ../nbs/00_core.ipynb #28928f7f
+qwen_info = dict(supports_vision=True, supports_reasoning=True, supports_function_calling=True, supports_tool_choice=True,
+    supports_system_messages=True, supports_response_schema=True, supports_parallel_function_calling=True,
+    supports_prompt_caching=True, supports_native_streaming=True, supports_native_structured_output=True,
+    input_cost_per_token=0.5e-6, cache_read_input_token_cost=0.1e-6, output_cost_per_token=3.0e-6)
+register_model({qwen3p6p: qwen_info});
 
 # %% ../nbs/00_core.ipynb #a37a77b6
 def random_tool_id():
@@ -858,7 +871,7 @@ class AsyncChat(Chat):
             tool_results = await parallel_async(_alite_call_func, tcs, timeout=tc_timeout, n_workers=n_workers, pause=pause, **self.tcdict)
             for r in tool_results: yield r
             self.hist+=tool_results
-            if step>=max_steps-1 or _has_stop(tool_results): prompt,tool_choice,search = mk_msg(final_prompt),'none',False
+            if step>=max_steps or _has_stop(tool_results): prompt,tool_choice,search = mk_msg(final_prompt),'none',False
             else: prompt = None
             try:
                 async for result in self._call(
