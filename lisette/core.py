@@ -5,12 +5,13 @@
 # %% auto #0
 __all__ = ['haik45', 'sonn45', 'sonn', 'sonn46', 'opus46', 'opus', 'gpt54', 'gpt54m', 'tool_dtls_tag', 're_tools',
            'token_dtls_tag', 're_token', 'stream_chunk_builder', 'codex54m', 'codex54', 'codex55', 'effort',
-           'tc_res_sysp', 'kimi', 'qwen3p6p', 'qwen_info', 'status_re', 'patch_litellm', 'remove_cache_ckpts',
-           'contents', 'stop_reason', 'mk_msg', 'split_tools', 'fmt2hist', 'mk_msgs', 'stream_with_complete',
-           'lite_mk_func', 'ToolResponse', 'structured', 'cite_footnote', 'cite_footnotes', 'mk_stream_chunk',
-           'StopResponse', 'FullResponse', 'search_count', 'UsageStats', 'Chat', 'add_warning', 'random_tool_id',
-           'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results', 'astream_with_complete', 'AsyncChat', 'trunc_param',
-           'mk_tr_details', 'StreamFormatter', 'AsyncStreamFormatter', 'display_stream', 'adisplay_stream']
+           'tc_res_sysp', 'kimi', 'qwen3p6p', 'qwen_info', 'status_re', 'dsf', 'dsp', 'v4_flash_info', 'v4_pro_info',
+           'patch_litellm', 'remove_cache_ckpts', 'contents', 'stop_reason', 'mk_msg', 'split_tools', 'fmt2hist',
+           'mk_msgs', 'stream_with_complete', 'lite_mk_func', 'ToolResponse', 'structured', 'cite_footnote',
+           'cite_footnotes', 'mk_stream_chunk', 'StopResponse', 'FullResponse', 'search_count', 'UsageStats', 'Chat',
+           'add_warning', 'random_tool_id', 'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results',
+           'astream_with_complete', 'AsyncChat', 'trunc_param', 'mk_tr_details', 'StreamFormatter',
+           'AsyncStreamFormatter', 'display_stream', 'adisplay_stream']
 
 # %% ../nbs/00_core.ipynb #82380377
 import asyncio, base64, json, litellm, mimetypes, random, string, ast, litellm, warnings
@@ -570,6 +571,9 @@ class Chat:
         pf = [{"role":"assistant","content":prefill}] if prefill else []
         msgs = sp + self.hist + pf
         if self.tool_reminder: msgs = _inject_tool_reminder(msgs, self.tool_reminder)
+        if 'deepseek' in self.model:
+            for m in msgs:
+                if m.get('role')=='assistant' and not m.get('reasoning_content'): m['reasoning_content'] = ''
         return msgs
     
     @property
@@ -763,10 +767,10 @@ def random_tool_id():
     random_part = ''.join(random.choices(string.ascii_letters + string.digits, k=25))
     return f'toolu_{random_part}'
 
-# %% ../nbs/00_core.ipynb #e00e88b4
-def mk_tc(func, args, tcid=None, idx=1):
-    if not tcid: tcid = random_tool_id()
-    return {'index': idx, 'function': {'arguments': args, 'name': func}, 'id': tcid, 'type': 'function'}
+# %% ../nbs/00_core.ipynb #1e1d8c3d
+def mk_tc(func, tcid=None, idx=1, **kw):
+    name = getattr(func, '__name__', func)
+    return dict(index=idx, function={'arguments': json.dumps(kw), 'name': name}, id=tcid or random_tool_id(), type='function')
 
 # %% ../nbs/00_core.ipynb #00cebbbb
 def mk_tc_req(content, tcs): return Message(content=content, role='assistant', tool_calls=tcs, function_call=None)
@@ -1006,6 +1010,21 @@ async def adisplay_stream(rs, **kwargs):
         md += o
         if md: h.update(Markdown(md))
     return fmt
+
+# %% ../nbs/00_core.ipynb #57adae96
+dsf = "deepseek/deepseek-v4-flash"
+dsp = "deepseek/deepseek-v4-pro"
+
+v4_flash_info = dict(get_model_info("deepseek/deepseek-v3.2"))
+v4_flash_info |= dict(supports_assistant_prefill=True, supports_function_calling=True, supports_prompt_caching=True,
+    supports_reasoning=True, supports_tool_choice=True)
+v4_flash_info.update(input_cost_per_token=1.4e-07, input_cost_per_token_cache_hit=2.8e-09, output_cost_per_token=2.8e-07,
+    max_input_tokens=1048576, max_output_tokens=393216, max_tokens=393216)
+# TODO temp pricing until end of May 2026
+v4_pro_info = {**v4_flash_info,
+    'input_cost_per_token': 4.35e-07, 'input_cost_per_token_cache_hit': 3.625e-09, 'output_cost_per_token': 8.7e-07}
+register_model({dsf: v4_flash_info, dsp: v4_pro_info})
+get_model_info(dsf);
 
 # %% ../nbs/00_core.ipynb #14c0255f
 from litellm import register_model, get_model_info
