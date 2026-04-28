@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.1.27
+
+### New Features
+
+- Add DeepSeek v4 support ([#162](https://github.com/AnswerDotAI/lisette/issues/162))
+
+
 ## 0.1.26
 
 ### New Features
