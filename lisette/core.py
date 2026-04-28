@@ -603,15 +603,15 @@ def _handle_stop_reason(res):
 
 # %% ../nbs/00_core.ipynb #c85b1227
 def _think_kw(model, think):
-    "Return completion kwargs for thinking/reasoning based on model"
     if not think: return {}
     if 'opus-4-7' in model:
-        # Only Opus 4.7 handles max thinking
         e = 'xhigh' if think=='h' else effort.get(think)
         return dict(thinking={"type":"adaptive", "display":"summarized"}, output_config={"effort":e})
     try: xhigh = get_model_info(model).get('supports_xhigh_reasoning_effort')
     except: xhigh = False
-    return dict(reasoning_effort=effort.get(think) if think!='x' else 'xhigh' if xhigh else 'high')
+    eff = effort.get(think) if think!='x' else 'xhigh' if xhigh else 'high'
+    if model.startswith('chatgpt/'): return dict(reasoning={'effort':eff, 'summary':'auto'})
+    return dict(reasoning_effort=eff)
 
 # %% ../nbs/00_core.ipynb #99392c21
 @patch
@@ -1061,6 +1061,16 @@ if hasattr(get_model_info, 'cache_clear'): get_model_info.cache_clear()
 @patch
 def _login_device_code(self:Authenticator):
     raise GetAccessTokenError(status_code=401, message="No Codex auth found — skipping device code login to avoid auth loop. Log in with `codex login`")
+
+# %% ../nbs/00_core.ipynb #13af1c8f
+from litellm.llms.chatgpt.responses.transformation import ChatGPTResponsesAPIConfig
+
+# %% ../nbs/00_core.ipynb #138c6881
+@patch
+def transform_responses_api_request(self:ChatGPTResponsesAPIConfig, model, input, response_api_optional_request_params, litellm_params, headers):
+    r = self._orig_transform_responses_api_request(model, input, response_api_optional_request_params, litellm_params, headers)
+    r.pop('include', None)
+    return r
 
 # %% ../nbs/00_core.ipynb #298aae95
 # temp workaround whilst litellm doesn't support xhigh think
