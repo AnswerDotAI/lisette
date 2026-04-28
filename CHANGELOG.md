@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.1.28
+
+### New Features
+
+- Display chatgpt/ reasoning brains ([#163](https://github.com/AnswerDotAI/lisette/issues/163))
+
+
 ## 0.1.27
 
 ### New Features
