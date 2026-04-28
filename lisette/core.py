@@ -60,6 +60,7 @@ def patch_litellm(seed=0):
 
 # %% ../nbs/00_core.ipynb #aa84778b
 litellm.suppress_debug_info = True
+# litellm.disable_aiohttp_transport = True
 
 # %% ../nbs/00_core.ipynb #4bc74f98
 warnings.filterwarnings("ignore", message="Pydantic serializer warnings")
@@ -987,23 +988,23 @@ def display_stream(rs, **kwargs):
     try: from IPython.display import display, Markdown
     except ModuleNotFoundError: raise ModuleNotFoundError("This function requires ipython. Please run `pip install ipython` to use.")
     fmt = StreamFormatter(**kwargs)
-    md = ''
-    for o in fmt.format_stream(rs): 
-        md+=o
-        display(Markdown(md),clear=True)
+    md,h = '',display(Markdown(' '), display_id=True)
+    for o in fmt.format_stream(rs):
+        md += o
+        if md: h.update(Markdown(md))
     return fmt
 
-# %% ../nbs/00_core.ipynb #845df8b9
+# %% ../nbs/00_core.ipynb #d7f3452b
 @delegates(AsyncStreamFormatter)
 async def adisplay_stream(rs, **kwargs):
     "Use IPython.display to markdown display the response stream."
     try: from IPython.display import display, Markdown
     except ModuleNotFoundError: raise ModuleNotFoundError("This function requires ipython. Please run `pip install ipython` to use.")
     fmt = AsyncStreamFormatter(**kwargs)
-    md = ''
+    md,h = '',display(Markdown(' '), display_id=True)
     async for o in fmt.format_stream(rs):
-        md+=o
-        display(Markdown(md),clear=True)
+        md += o
+        if md: h.update(Markdown(md))
     return fmt
 
 # %% ../nbs/00_core.ipynb #14c0255f
