@@ -5,16 +5,17 @@
 # %% auto #0
 __all__ = ['haik45', 'sonn45', 'sonn', 'sonn46', 'opus46', 'opus', 'gpt54', 'gpt54m', 'tool_dtls_tag', 're_tools',
            'token_dtls_tag', 're_token', 'stream_chunk_builder', 'codex54m', 'codex54', 'codex55', 'codex53spark',
-           'effort', 'tc_res_sysp', 'kimi', 'qwen3p6p', 'qwen_info', 'status_re', 'dsf', 'dsp', 'v4_flash_info',
+           'effort', 'tc_res_sysp', 'status_re', 'kimi', 'qwen3p6p', 'qwen_info', 'dsf', 'dsp', 'v4_flash_info',
            'v4_pro_info', 'patch_litellm', 'remove_cache_ckpts', 'contents', 'stop_reason', 'mk_msg', 'split_tools',
-           'fmt2hist', 'mk_msgs', 'stream_with_complete', 'lite_mk_func', 'ToolResponse', 'structured', 'cite_footnote',
-           'cite_footnotes', 'mk_stream_chunk', 'StopResponse', 'FullResponse', 'search_count', 'UsageStats', 'Chat',
-           'add_warning', 'random_tool_id', 'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results',
-           'astream_with_complete', 'AsyncChat', 'trunc_param', 'mk_tr_details', 'StreamFormatter',
-           'AsyncStreamFormatter', 'display_stream', 'adisplay_stream']
+           'fmt2hist', 'mk_msgs', 'mk_stream_chunk', 'completion_text', 'FenceToolStop', 'stream_with_complete',
+           'lite_mk_func', 'ToolResponse', 'structured', 'cite_footnote', 'StopResponse', 'FullResponse',
+           'search_count', 'UsageStats', 'extract_fence_call', 'run_fence_tool', 'Chat', 'add_warning', 'trunc_param',
+           'mk_tr_details', 'StreamFormatter', 'display_stream', 'random_tool_id', 'mk_tc', 'mk_tc_req', 'mk_tc_result',
+           'mk_tc_results', 'astream_with_complete', 'run_fence_tool_async', 'AsyncChat', 'AsyncStreamFormatter',
+           'adisplay_stream']
 
 # %% ../nbs/00_core.ipynb #82380377
-import asyncio, base64, json, litellm, mimetypes, random, string, ast, litellm, warnings
+import asyncio, base64, json, litellm, mimetypes, random, string, ast, litellm, warnings, copy
 from typing import Optional,Callable
 from html import escape
 from litellm import (acompletion, completion, stream_chunk_builder, Message,
@@ -194,6 +195,32 @@ token_dtls_tag = "<details class='token-usage-details'>"
 re_token = re.compile(fr"^{re.escape(token_dtls_tag)}<summary>.*?</summary>\n*\n*`.*?`\n*\n*</details>\n?",
                       flags=re.DOTALL|re.MULTILINE)
 
+# %% ../nbs/00_core.ipynb #12c78130
+_fence_back = '`````'
+_fence_re = re.compile(f'{_fence_back}(py|bash)\n(.*?)\n{_fence_back}', re.DOTALL)
+_result_re = re.compile(f'\n{_fence_back}result\n(.*?)\n{_fence_back}\n', re.DOTALL)
+_lang2tool = dict(py='python', bash='bash')
+
+def _mk_result_fence(output): return f"\n{_fence_back}result\n{output}\n{_fence_back}\n"
+
+def _split_msg_on_fences(msg):
+    "Split an assistant Msg on result fences, return list of Msgs"
+    if not isinstance(msg,Message) or msg.role != 'assistant': return [msg]
+    if not _result_re.search(msg.content or ''): return [msg]
+    res = []
+    for i,p in enumerate(_result_re.split(msg.content)):
+        if not p: continue
+        if i % 2 == 0:
+            if p.strip(): res.append(Message(role='assistant', content=p.strip()))
+        else: res.append(Message(role='user', content=_mk_result_fence(p)))
+    return res
+
+def _split_fence_msgs(msgs):
+    "Split all assistant msgs on result fences for wire protocol"
+    res = []
+    for m in msgs: res.extend(_split_msg_on_fences(m))
+    return res
+
 # %% ../nbs/00_core.ipynb #303951a2
 def _extract_tool(text:str)->tuple[dict,dict]:
     "Extract tool call and results from <details> block"
@@ -213,17 +240,26 @@ def fmt2hist(outp:str)->list:
     "Transform a formatted output into a LiteLLM compatible history"
     lm,hist = Message(),[]
     if token_dtls_tag in outp: outp = re_token.sub('', outp)
-    if tool_dtls_tag not in outp: return [outp]
+    if tool_dtls_tag not in outp:
+        if isinstance(outp,str):
+            if not _result_re.search(outp): return [outp]
+            else:
+                msgs = _split_msg_on_fences(Message(outp))
+                if msgs[-1].role == 'user': msgs.append(Message('.')) # inject assistant
+                return msgs
+        return [outp]
     for is_last,(txt,_,tooljson) in loop_last(split_tools(outp)):
         if is_last and not (txt or '').strip() and not tooljson: continue
         txt = txt.strip() if tooljson or txt.strip() else '.'
-        hist.append(lm:=Message(txt))
+        msgs = _split_msg_on_fences(Message(txt))
+        lm = last(msgs, lambda o: o.role=='assistant')
+        hist.extend(msgs)
         if tooljson:
             if tcr := _extract_tool(tooljson):
-                if not hist: hist.append(lm) # if LLM calls a tool without talking
+                if not hist: hist.extend(msgs) # if LLM calls a tool without talking
                 lm.tool_calls = lm.tool_calls+[tcr[0]] if lm.tool_calls else [tcr[0]] 
                 hist.append(tcr[1])
-    if hist and isinstance(hist[-1], dict): hist.append(Message('.'))
+    if hist and (isinstance(hist[-1], dict) or hist[-1].role == 'user'): hist.append(Message('.')) # inject assistant
     return hist
 
 # %% ../nbs/00_core.ipynb #02cb84da
@@ -287,15 +323,50 @@ def _patched_scb(chunks, **kw):
 
 _lm.stream_chunk_builder = litellm.stream_chunk_builder = stream_chunk_builder = _patched_scb
 
+# %% ../nbs/00_core.ipynb #48f05cc4
+def mk_stream_chunk(**kwargs): return ModelResponseStream([StreamingChoices(delta=Delta(**kwargs))])
+
+# %% ../nbs/00_core.ipynb #f2ab895c
+def completion_text(chunks):
+    return ''.join(L(chunks).map(lambda c: nested_idx(c, 'choices', 0, 'delta', 'content')).filter())
+
+# %% ../nbs/00_core.ipynb #bce975ca
+class FenceToolStop:
+    def __init__(self, langs): self.langs = langs
+    def __call__(self, text):
+        "Return trim result if complete fence detected in active lang"
+        m = _fence_re.search(text)
+        if m and m.group(1) in self.langs: return m.group(0)
+
+# %% ../nbs/00_core.ipynb #e58ef9bf
+def _trim_chunk(chunk, txt, res):
+    'Trim chunk delta and the full completion text until the result text'
+    idx = len(txt) - (txt.find(res) + len(res))
+    if idx == 0: return chunk, txt
+    tchunk = copy.deepcopy(chunk)
+    tchunk.choices[0].delta.content = chunk.choices[0].delta.content[:-idx]
+    final_txt = txt[:-idx]
+    return tchunk, final_txt
+
 # %% ../nbs/00_core.ipynb #9ad6fc2c
-def stream_with_complete(gen, postproc=noop):
-    "Extend streaming response chunks with the complete response"
+def stream_with_complete(gen, postproc=noop, stop_callables=None):
     chunks = []
+    stop = False
     for chunk in gen:
         chunks.append(chunk)
-        yield chunk
-    postproc(chunks)
-    return stream_chunk_builder(chunks)
+        postproc(chunk)
+        if stop_callables and not stop:
+            for f in stop_callables:
+                txt = completion_text(chunks)
+                if res:=f(txt):
+                    chunk, final_txt = _trim_chunk(chunk, txt, res)
+                    stop = True
+                    yield chunk
+        if stop: yield mk_stream_chunk(reasoning_content="processing")
+        else:    yield chunk
+    res = stream_chunk_builder(chunks)
+    if stop: res.choices[0].message.content = final_txt
+    return res
 
 # %% ../nbs/00_core.ipynb #4301402e
 def lite_mk_func(f):
@@ -419,19 +490,13 @@ def cite_footnote(msg):
     if citation:= nested_idx(delta, 'provider_specific_fields', 'citation'):
         title = citation['title'].replace('"', '\\"')
         delta.content = f'[*]({citation["url"]} "{title}") '
-        
-def cite_footnotes(stream_list):
-    "Add markdown footnote citations to stream deltas"
-    for msg in stream_list: cite_footnote(msg)
 
 # %% ../nbs/00_core.ipynb #a636d732
 effort = AttrDict({o[0]:o for o in ('low','medium','high')})
 effort['x'] = 'max'
 
 # %% ../nbs/00_core.ipynb #715e9a83
-def mk_stream_chunk(**kwargs): return ModelResponseStream([StreamingChoices(delta=Delta(**kwargs))])
 def _mk_prefill(pf): return mk_stream_chunk(content=pf, role='assistant')
-
 
 # %% ../nbs/00_core.ipynb #2d5b468c
 class StopResponse(str): pass
@@ -523,6 +588,21 @@ def _inject_tool_reminder(msgs, reminder):
     msgs[i] = m
     return msgs
 
+# %% ../nbs/00_core.ipynb #fcc12ec4
+def extract_fence_call(text):
+    "Return (lang, code) if text ends with terminated py/bash fence, else None"
+    ms = list(_fence_re.finditer(text))
+    if not ms: return None
+    m = ms[-1]
+    if m.end() == len(text): return m.group(1), m.group(2)
+
+def run_fence_tool(lang, code, ns):
+    "Run the mapped tool for `lang` with the code, return result fence"
+    tname = _lang2tool[lang]
+    arg = dict(code=code) if lang == 'py' else dict(command=code)
+    res = call_func(tname, arg, ns=ns, raise_on_err=False)
+    return _mk_result_fence(_trunc_str(str(res)))
+
 # %% ../nbs/00_core.ipynb #a9ece479
 class Chat:
     def __init__(
@@ -561,23 +641,24 @@ class Chat:
         if completefunc is None: completefunc = acompletion if any(o.__name__=='AsyncChat' for o in type(self).mro()) else completion
         store_attr()
     
-    def _prep_msg(self, msg=None, prefill=None):
+    def _prep_msg(self, msg=None, prefill=None, stop_callables=None):
         "Prepare the messages list for the API call"
         sp = [{"role": "system", "content": self.sp}] if self.sp else []
         if sp:
             if 0 in self.cache_idxs: sp[0] = _add_cache_control(sp[0])
             cache_idxs = L(self.cache_idxs).filter().map(lambda o: o-1 if o>0 else o)
         else: cache_idxs = self.cache_idxs
-        if msg: self.hist = self.hist+[msg]
-        self.hist = mk_msgs(self.hist, self.cache and 'claude' in self.model, cache_idxs, self.ttl)
+        if msg: self.hist = self.hist + [msg]
+        msgs = mk_msgs(self.hist, self.cache and 'claude' in self.model, cache_idxs, self.ttl)
         pf = [{"role":"assistant","content":prefill}] if prefill else []
-        msgs = sp + self.hist + pf
+        msgs = sp + msgs + pf
+        msgs = _split_fence_msgs(msgs) if stop_callables else msgs
         if self.tool_reminder: msgs = _inject_tool_reminder(msgs, self.tool_reminder)
         if 'deepseek' in self.model:
             for m in msgs:
                 if m.get('role')=='assistant' and not m.get('reasoning_content'): m['reasoning_content'] = ''
         return msgs
-    
+
     @property
     def tcdict(self): return dict(tool_schemas=self.tool_schemas, ns=self.ns, tc_res=self.tc_res, tc_res_eval=self.tc_res_eval)
     def _track(self, res):
@@ -615,6 +696,13 @@ def _think_kw(model, think):
     if model.startswith('chatgpt/'): return dict(reasoning={'effort':eff, 'summary':'auto'})
     return dict(reasoning_effort=eff)
 
+# %% ../nbs/00_core.ipynb #95986c76
+def _active_fence_langs(tool_schemas):
+    "Return set of active fence langs whose mapped tool is registered"
+    if not tool_schemas: return set()
+    names = {nested_idx(t, 'function', 'name') for t in tool_schemas}
+    return {lang for lang, tname in _lang2tool.items() if tname in names}
+
 # %% ../nbs/00_core.ipynb #99392c21
 @patch
 def _prep_call(self:Chat, prefill, search, max_tokens, kwargs, stream=False, think=None):
@@ -640,24 +728,28 @@ set it on the Chat object or call.""")
     if self.extra_headers: kwargs['extra_headers'] = self.extra_headers
     if stream: kwargs['stream_options'] = {"include_usage": True}
     kwargs.update(_think_kw(self.model, think))
+    if (langs := _active_fence_langs(self.tool_schemas)):
+        if not any(isinstance(s, FenceToolStop) for s in kwargs.get('stop_callables', [])):
+            kwargs['stop_callables'] = kwargs.get('stop_callables', []) + [FenceToolStop(langs)]
     return prefill, max_tokens
 
 # %% ../nbs/00_core.ipynb #27d1d94d
 @patch
 def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None, stream=False,
-        max_steps=2, step=1, final_prompt=None, tool_choice=None, max_tokens=None, **kwargs):
+        max_steps=2, step=1, final_prompt=None, tool_choice=None, max_tokens=None, stop_callables=None, **kwargs):
     "Internal method that always yields responses"
     if step>max_steps+1: return
     if self.callkw: kwargs = {**self.callkw, **kwargs}
     prefill, max_tokens = self._prep_call(prefill, search, max_tokens, kwargs, stream=stream, think=think)
+    stop_callables = listify(stop_callables) + listify(kwargs.pop('stop_callables', None))
     mt = {} if max_tokens in (None,0) else dict(max_tokens=int(max_tokens))
-    res = self.completefunc(model=self.model, messages=self._prep_msg(msg, prefill), stream=stream, **mt,
+    res = self.completefunc(model=self.model, messages=self._prep_msg(msg, prefill, stop_callables), stream=stream, **mt,
         tools=self.tool_schemas, tool_choice=tool_choice, num_retries=2,
         temperature=None if think else ifnone(temp,self.temp),
         caching=self.cache and 'claude' not in self.model, **kwargs)
     if stream:
         if prefill: yield _mk_prefill(prefill)
-        res = yield from stream_with_complete(res, postproc=cite_footnotes)
+        res = yield from stream_with_complete(res, postproc=cite_footnote, stop_callables=stop_callables)
     elif not isinstance(res, ModelResponse): res = stream_chunk_builder(list(res))
     m = contents(res)
     if prefill: m.content = prefill + m.content
@@ -685,6 +777,18 @@ def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None,
             for t in tool_results:
                 if len(t['content'])>1000: t['content'] = _cwe_msg + _trunc_str(t['content'], mx=1000)
             yield from self._call(None, prefill, temp, think, search, stream, max_steps, max_steps, final_prompt, 'none', **kwargs)
+    elif (langs := _active_fence_langs(self.tool_schemas)):
+        m = self.hist[-1]
+        if m.role == 'assistant':
+            if fence := extract_fence_call(m.content or ''):
+                lang, code = fence
+                out = run_fence_tool(lang, code, self.ns)
+                m.content += out 
+                if stream: yield mk_stream_chunk(content=out, role='assistant')
+                if step <= max_steps:
+                    yield from self._call(
+                        None, prefill, temp, think, search, stream, max_steps, step+1,
+                        final_prompt, tool_choice, **kwargs)
 
 # %% ../nbs/00_core.ipynb #266f3d5d
 @patch
@@ -713,6 +817,80 @@ def __call__(self:Chat,
 def print_hist(self:Chat):
     "Print each message on a different line"
     for r in self.hist: print(r, end='\n\n')
+
+# %% ../nbs/00_core.ipynb #0d4e9e9a
+def trunc_param(v, mx=40):
+    "Truncate and escape param value for display"
+    tp = _trunc_str(str(v).replace('`', r'\`'), mx=mx, replace=None, skip=0)
+    try: return ast.literal_eval(tp)
+    except Exception: return repr(tp).replace('\\\\', '\\')
+
+def _tc_summary(tc, tr=None):
+    "Format tool call as func(params) → result string"
+    args = json.loads(tc.function.arguments)
+    params = ', '.join(f"{k}={trunc_param(v)}" for k,v in args.items())
+    res = f"→{trunc_param(tr.get('content',''))}" if tr else ''
+    return '<code>'+escape(f"{tc.function.name}({params}){res}")+'</code>'
+
+def _trunc_content(content, mx):
+    "Truncate tool result content, respecting '_full' flag"
+    if isinstance(content, dict) and '_full' in content and len(content)==1: return content['_full']
+    return _trunc_str(content, mx=mx)
+
+def mk_tr_details(tr, tc, mx=2000):
+    "Create <details> block for tool call as JSON"
+    args = {k:_trunc_str(v, mx=mx*5) for k,v in json.loads(tc.function.arguments).items()}
+    res = {'id':tr['tool_call_id'],
+           'call':{'function': tc.function.name, 'arguments': args},
+           'result':_trunc_content(tr.get('content'), mx=mx),}
+    summ = f"<summary>{_tc_summary(tc,tr)}</summary>"
+    return f"\n\n{tool_dtls_tag}\n{summ}\n\n```json\n{dumps(res, indent=2)}\n```\n\n</details>\n\n"
+
+# %% ../nbs/00_core.ipynb #35460a5a
+status_re = re.compile(r'^- ⏳ <code>(.*)</code> ⏳$|^🧠+$', re.MULTILINE)
+
+class StreamFormatter:
+    def __init__(self, mx=2000, debug=False, showthink=False):
+        self.outp,self.tcs = '',{}
+        store_attr()
+    
+    def format_item(self, o):
+        "Format a single item from the response stream."
+        res = ''
+        if self.debug: print(o)
+        if isinstance(o, ModelResponseStream):
+            d = o.choices[0].delta
+            if nested_idx(d, 'reasoning_content') and d['reasoning_content']!='{"text": ""}':
+                if self.showthink: res += str(nested_idx(d, 'reasoning_content'))
+                res+= '🧠' if not self.outp or self.outp[-1]=='🧠' else '\n\n🧠'
+            elif self.outp and self.outp[-1] == '🧠': res+= '\n\n'
+            if c:=d.content: res+=f"\n\n{c}" if res and res[-1] == '🧠' else c
+            for img in getattr(d, 'images', []): res += f"\n\n![generated image]({nested_idx(img, 'image_url', 'url')})\n\n"
+        elif isinstance(o, ModelResponse):
+            if c:=getattr(contents(o),'tool_calls',None):
+                self.tcs = {tc.id:tc for tc in c}
+                for tc in c: res += f"\n- ⏳ {_tc_summary(tc)} ⏳"
+        elif isinstance(o, dict) and 'tool_call_id' in o:
+            res += mk_tr_details(o, self.tcs.pop(o['tool_call_id']), mx=self.mx)
+        self.outp+=res
+        return res
+    
+    def format_stream(self, rs):
+        "Format the response stream for markdown display."
+        for o in rs: yield self.format_item(o)
+
+# %% ../nbs/00_core.ipynb #80a9f840
+@delegates(StreamFormatter)
+def display_stream(rs, **kwargs):
+    "Use IPython.display to markdown display the response stream."
+    try: from IPython.display import display, Markdown
+    except ModuleNotFoundError: raise ModuleNotFoundError("This function requires ipython. Please run `pip install ipython` to use.")
+    fmt = StreamFormatter(**kwargs)
+    md,h = '',display(Markdown(' '), display_id=True)
+    for o in fmt.format_stream(rs):
+        md += o
+        if md: h.update(Markdown(md))
+    return fmt
 
 # %% ../nbs/00_core.ipynb #0c33af14
 from litellm.litellm_core_utils.core_helpers import _FINISH_REASON_MAP
@@ -837,28 +1015,47 @@ async def _alite_call_func(tc, tool_schemas, ns, tc_res=None, tc_res_eval=False)
 
 # %% ../nbs/00_core.ipynb #13cf1122
 @asave_iter
-async def astream_with_complete(self, agen, postproc=noop):
+async def astream_with_complete(self, agen, postproc=noop, stop_callables=None):
     chunks = []
+    stop = False
     async for chunk in agen:
         chunks.append(chunk)
         postproc(chunk)
-        yield chunk
-    self.value = stream_chunk_builder(chunks)
+        if stop_callables and not stop:
+            for f in stop_callables:
+                txt = completion_text(chunks)
+                if res:=f(txt):
+                    chunk, final_txt = _trim_chunk(chunk, txt, res)
+                    stop = True
+                    yield chunk
+        if stop: yield mk_stream_chunk(reasoning_content="processing")
+        else:    yield chunk
+    res = stream_chunk_builder(chunks)
+    if stop: res.choices[0].message.content = final_txt
+    self.value = res
+
+# %% ../nbs/00_core.ipynb #cd9de8ec
+async def run_fence_tool_async(lang, code, ns):
+    "Run the mapped tool for `lang` with the code, return result fence"
+    tname = _lang2tool[lang]
+    arg = dict(code=code) if lang == 'py' else dict(command=code)
+    res = await call_func_async(tname, arg, ns=ns, raise_on_err=False)
+    return _mk_result_fence(_trunc_str(str(res)))
 
 # %% ../nbs/00_core.ipynb #f354e37b
 class AsyncChat(Chat):
-    async def _call(self, msg=None, prefill=None, temp=None, think=None, search=None, stream=False, max_steps=2, step=1,
-            final_prompt=None, tool_choice=None, max_tokens=None, n_workers=8, pause=0.001, tc_timeout=7200, **kwargs):
+    async def _call(self, msg=None, prefill=None, temp=None, think=None, search=None, stream=False, max_steps=2, step=1, final_prompt=None, tool_choice=None, max_tokens=None, stop_callables=None, n_workers=8, pause=0.001, tc_timeout=7200, **kwargs):
         if step>max_steps+1: return
         if self.callkw: kwargs = {**self.callkw, **kwargs}
         prefill, max_tokens = self._prep_call(prefill, search, max_tokens, kwargs, stream=stream, think=think)
+        stop_callables = listify(stop_callables) + listify(kwargs.pop('stop_callables', None))
         mt = {} if max_tokens in (None,0) else dict(max_tokens=int(max_tokens))
-        res = await self.completefunc(model=self.model, messages=self._prep_msg(msg, prefill), stream=stream, num_retries=2,
+        res = await self.completefunc(model=self.model, messages=self._prep_msg(msg, prefill, stop_callables), stream=stream, num_retries=2,
             tools=self.tool_schemas, tool_choice=tool_choice, **mt,
             temperature=None if think else ifnone(temp,self.temp), caching=self.cache and 'claude' not in self.model, **kwargs)
         if stream:
             if prefill: yield _mk_prefill(prefill)
-            res = astream_with_complete(res,postproc=cite_footnote)
+            res = astream_with_complete(res,postproc=cite_footnote,stop_callables=stop_callables)
             async for chunk in res: yield chunk
             res = res.value
         elif not isinstance(res, ModelResponse):
@@ -895,6 +1092,18 @@ class AsyncChat(Chat):
                 async for result in self._call(
                     prompt, prefill, temp, think, search, stream, max_steps, step+1,
                     final_prompt, tool_choice='none', **kwargs): yield result
+        elif (langs := _active_fence_langs(self.tool_schemas)):
+            m = self.hist[-1]
+            if m.role == 'assistant':
+                if fence := extract_fence_call(m.content or ''):
+                    lang, code = fence
+                    out = await run_fence_tool_async(lang, code, self.ns)
+                    m.content += out 
+                    if stream: yield mk_stream_chunk(content=out, role='assistant')
+                    if step <= max_steps:
+                        async for result in self._call(
+                            None, prefill, temp, think, search, stream, max_steps, step+1,
+                            final_prompt, tool_choice, **kwargs): yield result
 
 # %% ../nbs/00_core.ipynb #9bc01816
 @patch
@@ -919,85 +1128,11 @@ async def __call__(
     async for res in result_gen: pass
     return res # normal chat behavior only return last msg
 
-# %% ../nbs/00_core.ipynb #049f141f
-def trunc_param(v, mx=40):
-    "Truncate and escape param value for display"
-    tp = _trunc_str(str(v).replace('`', r'\`'), mx=mx, replace=None, skip=0)
-    try: return ast.literal_eval(tp)
-    except Exception: return repr(tp).replace('\\\\', '\\')
-
-def _tc_summary(tc, tr=None):
-    "Format tool call as func(params) → result string"
-    args = json.loads(tc.function.arguments)
-    params = ', '.join(f"{k}={trunc_param(v)}" for k,v in args.items())
-    res = f"→{trunc_param(tr.get('content',''))}" if tr else ''
-    return '<code>'+escape(f"{tc.function.name}({params}){res}")+'</code>'
-
-def _trunc_content(content, mx):
-    "Truncate tool result content, respecting '_full' flag"
-    if isinstance(content, dict) and '_full' in content and len(content)==1: return content['_full']
-    return _trunc_str(content, mx=mx)
-
-def mk_tr_details(tr, tc, mx=2000):
-    "Create <details> block for tool call as JSON"
-    args = {k:_trunc_str(v, mx=mx*5) for k,v in json.loads(tc.function.arguments).items()}
-    res = {'id':tr['tool_call_id'],
-           'call':{'function': tc.function.name, 'arguments': args},
-           'result':_trunc_content(tr.get('content'), mx=mx),}
-    summ = f"<summary>{_tc_summary(tc,tr)}</summary>"
-    return f"\n\n{tool_dtls_tag}\n{summ}\n\n```json\n{dumps(res, indent=2)}\n```\n\n</details>\n\n"
-
-# %% ../nbs/00_core.ipynb #8cb7f078
-status_re = re.compile(r'^- ⏳ <code>(.*)</code> ⏳$|^🧠+$', re.MULTILINE)
-
-class StreamFormatter:
-    def __init__(self, mx=2000, debug=False, showthink=False):
-        self.outp,self.tcs = '',{}
-        store_attr()
-    
-    def format_item(self, o):
-        "Format a single item from the response stream."
-        res = ''
-        if self.debug: print(o)
-        if isinstance(o, ModelResponseStream):
-            d = o.choices[0].delta
-            if nested_idx(d, 'reasoning_content') and d['reasoning_content']!='{"text": ""}':
-                if self.showthink: res += str(nested_idx(d, 'reasoning_content'))
-                res+= '🧠' if not self.outp or self.outp[-1]=='🧠' else '\n\n🧠'
-            elif self.outp and self.outp[-1] == '🧠': res+= '\n\n'
-            if c:=d.content: res+=f"\n\n{c}" if res and res[-1] == '🧠' else c
-            for img in getattr(d, 'images', []): res += f"\n\n![generated image]({nested_idx(img, 'image_url', 'url')})\n\n"
-        elif isinstance(o, ModelResponse):
-            if c:=getattr(contents(o),'tool_calls',None):
-                self.tcs = {tc.id:tc for tc in c}
-                for tc in c: res += f"\n- ⏳ {_tc_summary(tc)} ⏳"
-        elif isinstance(o, dict) and 'tool_call_id' in o:
-            res += mk_tr_details(o, self.tcs.pop(o['tool_call_id']), mx=self.mx)
-        self.outp+=res
-        return res
-    
-    def format_stream(self, rs):
-        "Format the response stream for markdown display."
-        for o in rs: yield self.format_item(o)
-
 # %% ../nbs/00_core.ipynb #7a6199ff
 class AsyncStreamFormatter(StreamFormatter):
     async def format_stream(self, rs):
         "Format the response stream for markdown display."
         async for o in rs: yield self.format_item(o)
-
-# %% ../nbs/00_core.ipynb #75ee8bce
-@delegates(StreamFormatter)
-def display_stream(rs, **kwargs):
-    "Use IPython.display to markdown display the response stream."
-    try: from IPython.display import display, Markdown
-    except ModuleNotFoundError: raise ModuleNotFoundError("This function requires ipython. Please run `pip install ipython` to use.")
-    fmt = StreamFormatter(**kwargs)
-    md,h = '',display(Markdown(' '), display_id=True)
-    for o in fmt.format_stream(rs):
-        md += o
-        if md: h.update(Markdown(md))
-    return fmt
 
 # %% ../nbs/00_core.ipynb #d7f3452b
 @delegates(AsyncStreamFormatter)
