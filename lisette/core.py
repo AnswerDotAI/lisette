@@ -4,10 +4,10 @@
 
 # %% auto #0
 __all__ = ['haik45', 'sonn45', 'sonn', 'sonn46', 'opus46', 'opus', 'gpt54', 'gpt54m', 'tool_dtls_tag', 're_tools',
-           'token_dtls_tag', 're_token', 'stream_chunk_builder', 'codex54m', 'codex54', 'codex55', 'effort',
-           'tc_res_sysp', 'kimi', 'qwen3p6p', 'qwen_info', 'status_re', 'dsf', 'dsp', 'v4_flash_info', 'v4_pro_info',
-           'patch_litellm', 'remove_cache_ckpts', 'contents', 'stop_reason', 'mk_msg', 'split_tools', 'fmt2hist',
-           'mk_msgs', 'stream_with_complete', 'lite_mk_func', 'ToolResponse', 'structured', 'cite_footnote',
+           'token_dtls_tag', 're_token', 'stream_chunk_builder', 'codex54m', 'codex54', 'codex55', 'codex53spark',
+           'effort', 'tc_res_sysp', 'kimi', 'qwen3p6p', 'qwen_info', 'status_re', 'dsf', 'dsp', 'v4_flash_info',
+           'v4_pro_info', 'patch_litellm', 'remove_cache_ckpts', 'contents', 'stop_reason', 'mk_msg', 'split_tools',
+           'fmt2hist', 'mk_msgs', 'stream_with_complete', 'lite_mk_func', 'ToolResponse', 'structured', 'cite_footnote',
            'cite_footnotes', 'mk_stream_chunk', 'StopResponse', 'FullResponse', 'search_count', 'UsageStats', 'Chat',
            'add_warning', 'random_tool_id', 'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results',
            'astream_with_complete', 'AsyncChat', 'trunc_param', 'mk_tr_details', 'StreamFormatter',
@@ -384,13 +384,15 @@ def _has_search(m):
     i = get_model_info(m)
     return bool(i.get('search_context_cost_per_query') or i.get('supports_web_search'))
 
-# %% ../nbs/00_core.ipynb #16eb0b7b
+# %% ../nbs/00_core.ipynb #afdb7359
 codex54m = "chatgpt/gpt-5.4-mini"
 codex54 = "chatgpt/gpt-5.4"
 codex55 = "chatgpt/gpt-5.5"
+codex53spark = "chatgpt/gpt-5.3-codex-spark"
 
-_codex_models = {codex54m:gpt54m, codex54:gpt54, codex55:gpt54}
-_gpt_models = {gpt54, gpt54m, 'responses/gpt-5.4', 'responses/gpt-5.4-mini', 'gpt-5.4', 'gpt-5.4-mini'} | set(_codex_models)
+_codex_models = {codex54m:gpt54m, codex54:gpt54, codex55:gpt54, codex53spark:gpt54}
+_gpt_models = {gpt54, gpt54m, 'responses/gpt-5.4', 'responses/gpt-5.4-mini', 'gpt-5.4', 'gpt-5.4-mini'} | set(_codex_models
+    ) | {o.removeprefix('chatgpt/') for o in _codex_models}
 
 @patch
 def get_supported_openai_params(self:litellm.openAIGPT5Config.__class__, model:str):
@@ -783,7 +785,6 @@ def mk_tc_result(tc, result): return {'tool_call_id': tc['id'], 'role': 'tool', 
 def mk_tc_results(tcq, results): return [mk_tc_result(a,b) for a,b in zip(tcq.tool_calls, results)]
 
 # %% ../nbs/00_core.ipynb #6fa66f10
-from fastcore.meta import patch_to
 from litellm.litellm_core_utils.llm_cost_calc.tool_call_cost_tracking import StandardBuiltInToolCostTracking
 from litellm.types.utils import ServerToolUse
 
@@ -1050,8 +1051,15 @@ def _read_auth_file(self:Authenticator):
     return toks if toks and (toks.get('access_token') or toks.get('refresh_token')) else data
 
 # %% ../nbs/00_core.ipynb #4f6beb6a
+_codex_overrides = {
+    codex53spark: dict(
+        supports_vision=False, supports_image_input=False, supports_web_search=True,
+        max_tokens=128000, max_input_tokens=128000, max_output_tokens=128000)
+}
+
 for m,src in _codex_models.items():
     info = dict(get_model_info(src)) | dict(litellm_provider='chatgpt', mode='responses', supports_web_search=True)
+    info |= _codex_overrides.get(m, {})
     info['supported_openai_params'] = list(info.get('supported_openai_params') or []) + ['web_search_options']
     info.pop('key', None)
     register_model({m: info})
@@ -1061,6 +1069,30 @@ if hasattr(get_model_info, 'cache_clear'): get_model_info.cache_clear()
 @patch
 def _login_device_code(self:Authenticator):
     raise GetAccessTokenError(status_code=401, message="No Codex auth found — skipping device code login to avoid auth loop. Log in with `codex login`")
+
+# %% ../nbs/00_core.ipynb #c80ba967
+from litellm.completion_extras.litellm_responses_transformation.transformation import OpenAiResponsesToChatCompletionStreamIterator
+from litellm.types.llms.openai import ChatCompletionToolCallFunctionChunk
+from litellm.types.utils import ChatCompletionToolCallChunk, Delta, ModelResponseStream, StreamingChoices
+from litellm.llms.chatgpt.chat.streaming_utils import ChatGPTToolCallNormalizer
+
+# %% ../nbs/00_core.ipynb #4d9d0f87
+@patch
+def chunk_parser(self:OpenAiResponsesToChatCompletionStreamIterator, chunk:dict):
+    if chunk.get('type')=='response.function_call_arguments.delta':
+        self._seen_arg_delta_idxs = getattr(self, '_seen_arg_delta_idxs', set())|{chunk.get('output_index', 0)}
+    if chunk.get('type')=='response.function_call_arguments.done' and chunk.get('output_index', 0) not in getattr(self, '_seen_arg_delta_idxs', set()):
+        return ModelResponseStream(choices=[StreamingChoices(index=0, delta=Delta(tool_calls=[
+            ChatCompletionToolCallChunk(id=None, index=chunk.get('output_index', 0), type='function',
+                function=ChatCompletionToolCallFunctionChunk(name=None, arguments=chunk.get('arguments', '')))
+        ]), finish_reason=None)])
+    return self._orig_chunk_parser(chunk)
+
+@patch
+def _normalize(self:ChatGPTToolCallNormalizer, chunk):
+    res = self._orig__normalize(chunk)
+    if res is not None and res.choices and res.choices[0].finish_reason=='stop' and self._seen_ids: res.choices[0].finish_reason = 'tool_calls'
+    return res
 
 # %% ../nbs/00_core.ipynb #13af1c8f
 from litellm.llms.chatgpt.responses.transformation import ChatGPTResponsesAPIConfig
