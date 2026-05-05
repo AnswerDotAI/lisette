@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.1.29
+
+### New Features
+
+- Add codex53spark model and patch responses-stream tool-call handling ([#164](https://github.com/AnswerDotAI/lisette/issues/164))
+
+
 ## 0.1.28
 
 ### New Features
