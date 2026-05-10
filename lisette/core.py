@@ -7,11 +7,10 @@ __all__ = ['haik45', 'sonn45', 'sonn', 'sonn46', 'opus46', 'opus', 'gpt54', 'gpt
            'token_dtls_tag', 're_token', 'stream_chunk_builder', 'codex54m', 'codex54', 'codex55', 'codex53spark',
            'effort', 'tc_res_sysp', 'kimi', 'qwen3p6p', 'qwen_info', 'status_re', 'dsf', 'dsp', 'v4_flash_info',
            'v4_pro_info', 'patch_litellm', 'remove_cache_ckpts', 'contents', 'stop_reason', 'mk_msg', 'split_tools',
-           'fmt2hist', 'mk_msgs', 'stream_with_complete', 'lite_mk_func', 'ToolResponse', 'structured', 'cite_footnote',
-           'cite_footnotes', 'mk_stream_chunk', 'StopResponse', 'FullResponse', 'search_count', 'UsageStats', 'Chat',
-           'add_warning', 'random_tool_id', 'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results',
-           'astream_with_complete', 'AsyncChat', 'trunc_param', 'mk_tr_details', 'StreamFormatter',
-           'AsyncStreamFormatter', 'display_stream', 'adisplay_stream']
+           'fmt2hist', 'mk_msgs', 'stream_with_complete', 'lite_mk_func', 'structured', 'cite_footnote',
+           'cite_footnotes', 'mk_stream_chunk', 'search_count', 'UsageStats', 'Chat', 'add_warning', 'random_tool_id',
+           'mk_tc', 'mk_tc_req', 'mk_tc_result', 'mk_tc_results', 'astream_with_complete', 'AsyncChat', 'trunc_param',
+           'mk_tr_details', 'StreamFormatter', 'AsyncStreamFormatter', 'display_stream', 'adisplay_stream']
 
 # %% ../nbs/00_core.ipynb #82380377
 import asyncio, base64, json, litellm, mimetypes, random, string, ast, litellm, warnings
@@ -30,6 +29,7 @@ from fastcore.xml import Safe
 
 from dataclasses import dataclass
 from litellm.exceptions import ContextWindowExceededError
+from .types import *
 
 # %% ../nbs/00_core.ipynb #2c28e8ce
 def patch_litellm(seed=0):
@@ -302,11 +302,6 @@ def lite_mk_func(f):
     if isinstance(f, dict): return f
     return {'type':'function', 'function':get_schema(f, pname='parameters')}
 
-# %% ../nbs/00_core.ipynb #9ac2035b
-@dataclass
-class ToolResponse:
-    content: list[str,str]
-
 # %% ../nbs/00_core.ipynb #a0a7019f
 def _prep_tool_res(res, tcid):
     "Prepend tool call ID text block to result"
@@ -434,9 +429,6 @@ def _mk_prefill(pf): return mk_stream_chunk(content=pf, role='assistant')
 
 
 # %% ../nbs/00_core.ipynb #2d5b468c
-class StopResponse(str): pass
-class FullResponse(str): pass
-
 def _has_stop(results): return any(isinstance(r.get('content'), StopResponse) for r in results if isinstance(r, dict))
 
 # %% ../nbs/00_core.ipynb #da09ec48
@@ -1035,20 +1027,14 @@ from litellm.llms.chatgpt.authenticator import Authenticator, GetAccessTokenErro
 os.environ.setdefault('CHATGPT_DEFAULT_INSTRUCTIONS', 'You are a helpful assistant.');
 
 # %% ../nbs/00_core.ipynb #0023bb47
-def _codex_auth_data():
+@patch
+def _read_auth_file(self:Authenticator):
     if env:=os.getenv('CODEX_AUTH_JSON'):
         data = json.loads(env)
         return data.get('tokens', data)
     p = Path('~/.codex/auth.json').expanduser()
     if not p.exists(): return None
     return json.loads(p.read_text()).get('tokens')
-
-@patch
-def _read_auth_file(self:Authenticator):
-    data = self._orig__read_auth_file()
-    if data and (data.get('access_token') or data.get('refresh_token')): return data
-    toks = _codex_auth_data()
-    return toks if toks and (toks.get('access_token') or toks.get('refresh_token')) else data
 
 # %% ../nbs/00_core.ipynb #4f6beb6a
 _codex_overrides = {
