@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.1.30
+
+### New Features
+
+- Create `lisette.types` and refactor codex auth ([#166](https://github.com/AnswerDotAI/lisette/issues/166))
+
+
 ## 0.1.29
 
 ### New Features
