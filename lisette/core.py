@@ -872,7 +872,7 @@ class AsyncChat(Chat):
         yield res
 
         if tcs := _filter_srvtools(m.tool_calls):
-            tool_results = await parallel_async(_alite_call_func, tcs, timeout=tc_timeout, n_workers=n_workers, pause=pause, **self.tcdict)
+            tool_results = await parallel_async(_alite_call_func, tcs, timeout=tc_timeout, n_workers=n_workers, pause=pause, return_exceptions=True, **self.tcdict)
             for r in tool_results: yield r
             self.hist+=tool_results
             if step>=max_steps or _has_stop(tool_results): prompt,tool_choice,search = mk_msg(final_prompt),'none',False
