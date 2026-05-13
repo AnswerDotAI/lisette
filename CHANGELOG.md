@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.1.32
+
+### New Features
+
+- Update for new fastcore
+
+
 ## 0.1.31
 
 ### New Features
