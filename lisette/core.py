@@ -87,7 +87,7 @@ def _repr_markdown_(self: litellm.ModelResponse):
     
     return f"""{content}
 
-<details>
+<details markdown="1">
 
 - {det_str}
 
@@ -187,10 +187,10 @@ def mk_msg(
     return _add_cache_control(msg, ttl=ttl) if cache else msg
 
 # %% ../nbs/00_core.ipynb #8886f917
-tool_dtls_tag = "<details class='tool-usage-details'>"
+tool_dtls_tag = "<details class='tool-usage-details' markdown='1'>"
 re_tools = re.compile(fr"^({tool_dtls_tag}\n*(?:<summary>(?P<summary>.*?)</summary>\n*)?\n*```json\n+(.*?)\n+```\n+</details>)",
                       flags=re.DOTALL|re.MULTILINE)
-token_dtls_tag = "<details class='token-usage-details'>"
+token_dtls_tag = "<details class='token-usage-details' markdown='1'>"
 re_token = re.compile(fr"^{re.escape(token_dtls_tag)}<summary>.*?</summary>\n*\n*`.*?`\n*\n*</details>\n?",
                       flags=re.DOTALL|re.MULTILINE)
 
