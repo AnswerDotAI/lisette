@@ -435,9 +435,11 @@ def _has_stop(results): return any(isinstance(r.get('content'), StopResponse) fo
 def _trunc_str(s, mx=2000, skip=10, replace="TRUNCATED"):
     "Truncate `s` to `mx` chars max, adding `replace` if truncated"
     if not isinstance(s, str): s = str(s)
-    if len(s)>2 and s[0]=='𝍁' and s[-1]=='𝍁': return s[1:-1]
+    s = s.rstrip()
+    if len(s)>2 and s[0]=='𝍁' and s[-1]=='𝍁':
+        s = s[1:-1]
+        if replace: return s
     if isinstance_str(s, ('FullResponse','Safe')): return s
-    s = str(s).strip()
     if len(s)<=mx: return s
     s = s[skip:mx-skip]
     ss = s.split(' ')
