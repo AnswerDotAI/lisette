@@ -2,6 +2,17 @@
 
 <!-- do not remove -->
 
+## 0.1.33
+
+### New Features
+
+- Add codex auth file write support and use json.loads for `trunc_param` ([#169](https://github.com/AnswerDotAI/lisette/issues/169))
+
+### Bugs Squashed
+
+- Fix `_trunc_str`: rstrip instead of strip, and skip truncation for 𝍁-wrapped strings when replace is set ([#168](https://github.com/AnswerDotAI/lisette/issues/168))
+
+
 ## 0.1.32
 
 ### New Features
