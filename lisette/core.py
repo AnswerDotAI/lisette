@@ -1047,6 +1047,7 @@ def _read_auth_file(self:Authenticator):
 @patch
 def _write_auth_file(self:Authenticator, data):
     p = _codex_auth_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
     try: outer = json.loads(p.read_text()) if p.exists() else {'auth_mode':'chatgpt','OPENAI_API_KEY':None}
     except json.JSONDecodeError: outer = {'auth_mode':'chatgpt','OPENAI_API_KEY':None}
     outer['tokens'] = data
