@@ -917,7 +917,8 @@ async def __call__(
 def trunc_param(v, mx=40):
     "Truncate and escape param value for display"
     tp = _trunc_str(str(v).replace('`', r'\`'), mx=mx, replace=None, skip=0)
-    try: return ast.literal_eval(tp)
+    # json.loads (not ast.literal_eval) so surrogate pairs combine into real codepoints
+    try: return json.loads(tp)
     except Exception: return repr(tp).replace('\\\\', '\\')
 
 def _tc_summary(tc, tr=None):
@@ -1028,15 +1029,29 @@ from litellm.llms.chatgpt.authenticator import Authenticator, GetAccessTokenErro
 # %% ../nbs/00_core.ipynb #77afa864
 os.environ.setdefault('CHATGPT_DEFAULT_INSTRUCTIONS', 'You are a helpful assistant.');
 
-# %% ../nbs/00_core.ipynb #0023bb47
+# %% ../nbs/00_core.ipynb #ad391e58
+from datetime import datetime, timezone
+
+# %% ../nbs/00_core.ipynb #a298b641
+def _codex_auth_path(): return Path(os.getenv('CODEX_AUTH_FILE', '~/.codex/auth.json')).expanduser()
+
 @patch
 def _read_auth_file(self:Authenticator):
-    if env:=os.getenv('CODEX_AUTH_JSON'):
-        data = json.loads(env)
-        return data.get('tokens', data)
-    p = Path('~/.codex/auth.json').expanduser()
+    p = _codex_auth_path()
     if not p.exists(): return None
-    return json.loads(p.read_text()).get('tokens')
+    try: return json.loads(p.read_text()).get('tokens')
+    except json.JSONDecodeError as e:
+        verbose_logger.warning("Invalid codex auth file: %s", e)
+        return None
+
+@patch
+def _write_auth_file(self:Authenticator, data):
+    p = _codex_auth_path()
+    try: outer = json.loads(p.read_text()) if p.exists() else {'auth_mode':'chatgpt','OPENAI_API_KEY':None}
+    except json.JSONDecodeError: outer = {'auth_mode':'chatgpt','OPENAI_API_KEY':None}
+    outer['tokens'] = data
+    outer['last_refresh'] = datetime.now(timezone.utc).isoformat().replace('+00:00','Z')
+    p.write_text(json.dumps(outer, indent=2))
 
 # %% ../nbs/00_core.ipynb #4f6beb6a
 _codex_overrides = {
