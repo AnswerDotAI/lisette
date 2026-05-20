@@ -2,6 +2,11 @@
 
 <!-- do not remove -->
 
+## 0.1.35
+
+- Remove nbdev entry point
+
+
 ## 0.1.33
 
 ### New Features
