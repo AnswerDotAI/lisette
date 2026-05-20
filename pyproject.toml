@@ -19,9 +19,6 @@ dependencies = ['litellm', 'numpydoc', 'toolslm>=0.3.29', 'fastcore>=1.13.0', "t
 Repository = "https://github.com/AnswerDotAI/lisette"
 Documentation = "https://lisette.answer.ai/"
 
-[project.entry-points.nbdev]
-lisette = "lisette._modidx:d"
-
 [project.optional-dependencies]
 dev = ['ipython', 'pycachy>=0.0.6', 'fastlite', 'nbdev', 'pillow']
 
