@@ -128,8 +128,10 @@ def _bytes2content(data):
     return {'type': 'file', 'file': {'file_data': f'data:{mtype};base64,{encoded}'}}
 
 # %% ../nbs/00_core.ipynb #ef65f38b
-def _add_cache_control(msg,          # LiteLLM formatted msg
-                       ttl=None):    # Cache TTL: '5m' (default) or '1h'
+def _add_cache_control(
+    msg,          # LiteLLM formatted msg
+    ttl=None # Cache TTL: '5m' (default) or '1h'
+):
     "cache `msg` with default time-to-live (ttl) of 5minutes ('5m'), but can be set to '1h'."
     cc = {"type": "ephemeral"} | ({"ttl": ttl} if ttl else {})
     if tcs := msg.get('tool_calls'):
@@ -523,13 +525,13 @@ def _inject_tool_reminder(msgs, reminder):
 class Chat:
     def __init__(
         self,
-        model:str,                # LiteLLM compatible model name 
+        model:str,                # LiteLLM compatible model name
         sp='',                    # System prompt
         temp=0,                   # Temperature
         search=False,             # Search (l,m,h), if model supports it
         tools:list=None,          # Add tools
         hist:list=None,           # Chat history
-        ns:Optional[dict]=None,   # Custom namespace for tool calling 
+        ns:Optional[dict]=None,   # Custom namespace for tool calling
         cache=False,              # Anthropic prompt caching
         cache_idxs:list=[-1],     # Anthropic cache breakpoint idxs, use `0` for sys prompt if provided
         ttl=None,                 # Anthropic prompt caching ttl
@@ -685,17 +687,19 @@ def _call(self:Chat, msg=None, prefill=None, temp=None, think=None, search=None,
 # %% ../nbs/00_core.ipynb #266f3d5d
 @patch
 @delegates(Chat._call)
-def __call__(self:Chat,
-             msg=None,          # Message str, or list of multiple message parts
-             prefill=None,      # Prefill AI response if model supports it
-             temp=None,         # Override temp set on chat initialization
-             think=None,        # Thinking (l,m,h)
-             search=None,       # Override search set on chat initialization (l,m,h)
-             stream=None,       # Stream results (defaults to `self.stream`)
-             max_steps=2, # Maximum number of tool calls
-             final_prompt=_final_prompt, # Final prompt when tool calls have ran out 
-             return_all=False,  # Returns all intermediate ModelResponses if not streaming and has tool calls
-             **kwargs):
+def __call__(
+    self:Chat,
+    msg=None,          # Message str, or list of multiple message parts
+    prefill=None,      # Prefill AI response if model supports it
+    temp=None,         # Override temp set on chat initialization
+    think=None,        # Thinking (l,m,h)
+    search=None,       # Override search set on chat initialization (l,m,h)
+    stream=None,       # Stream results (defaults to `self.stream`)
+    max_steps=2, # Maximum number of tool calls
+    final_prompt=_final_prompt, # Final prompt when tool calls have ran out
+    return_all=False,  # Returns all intermediate ModelResponses if not streaming and has tool calls
+    **kwargs
+):
     "Main call method - handles streaming vs non-streaming"
     if stream is None: stream = self.stream
     self.use = UsageStats()
@@ -904,7 +908,7 @@ async def __call__(
     search=None,       # Override search set on chat initialization (l,m,h)
     stream=None,       # Stream results (defaults to `self.stream`)
     max_steps=2, # Maximum number of tool calls
-    final_prompt=_final_prompt, # Final prompt when tool calls have ran out 
+    final_prompt=_final_prompt, # Final prompt when tool calls have ran out
     return_all=False,  # Returns all intermediate ModelResponses if not streaming and has tool calls
     **kwargs
 ):
