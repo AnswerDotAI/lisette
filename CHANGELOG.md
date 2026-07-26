@@ -2,6 +2,17 @@
 
 <!-- do not remove -->
 
+## 0.1.36
+
+### New Features
+
+- Replace <details> tool/usage envelopes with fenced JSON wire format ({.tool}/{.usage}) ([#172](https://github.com/AnswerDotAI/lisette/issues/172))
+
+### Bugs Squashed
+
+- fix truncation ([#170](https://github.com/AnswerDotAI/lisette/pull/170)), thanks to [@RensDimmendaal](https://github.com/RensDimmendaal)
+
+
 ## 0.1.35
 
 - Remove nbdev entry point
@@ -550,4 +561,3 @@
 ## 0.0.1
 
 - init release
-
