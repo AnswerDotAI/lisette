@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.1.37
+
+### New Features
+
+- add not maintained notice ([#173](https://github.com/AnswerDotAI/lisette/pull/173)), thanks to [@RensDimmendaal](https://github.com/RensDimmendaal)
+
+
 ## 0.1.36
 
 ### New Features
